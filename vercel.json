@@ -52,53 +52,11 @@
         {
           "key": "X-Built-With",
           "value": "Claude Code"
-        },
-        {
-          "key": "X-Evals",
-          "value": "71"
-        },
-        {
-          "key": "X-Resume",
-          "value": "/llms.txt"
         }
       ]
     }
   ],
   "redirects": [
-    { "source": "/jacobo", "destination": "/agente-ia-jacobo", "permanent": true },
-    { "source": "/business-os", "destination": "/business-os-para-airtable", "permanent": true },
-    { "source": "/en/", "destination": "/en", "permanent": true },
     { "source": "/:path+/", "destination": "/:path+", "permanent": true }
-  ],
-  "rewrites": [
-    { "source": "/en", "destination": "/en/index.html" },
-    { "source": "/n8n-para-pms", "destination": "/n8n-para-pms/index.html" },
-    { "source": "/n8n-for-pms", "destination": "/n8n-for-pms/index.html" },
-    { "source": "/agente-ia-jacobo", "destination": "/agente-ia-jacobo/index.html" },
-    { "source": "/ai-agent-jacobo", "destination": "/ai-agent-jacobo/index.html" },
-    { "source": "/business-os-para-airtable", "destination": "/business-os-para-airtable/index.html" },
-    { "source": "/business-os-for-airtable", "destination": "/business-os-for-airtable/index.html" },
-    { "source": "/seo-programatico", "destination": "/seo-programatico/index.html" },
-    { "source": "/programmatic-seo", "destination": "/programmatic-seo/index.html" },
-    { "source": "/santifer-irepair", "destination": "/santifer-irepair/index.html" },
-    { "source": "/santifer-irepair-founder", "destination": "/santifer-irepair-founder/index.html" },
-    { "source": "/chatbot-que-se-cura-solo", "destination": "/chatbot-que-se-cura-solo/index.html" },
-    { "source": "/self-healing-chatbot", "destination": "/self-healing-chatbot/index.html" },
-    { "source": "/career-ops", "destination": "/career-ops/index.html" },
-    { "source": "/career-ops-system", "destination": "/career-ops-system/index.html" },
-    { "source": "/flota-agentes-ia", "destination": "/flota-agentes-ia/index.html" },
-    { "source": "/historia", "destination": "/historia/index.html" },
-    { "source": "/story", "destination": "/story/index.html" },
-    { "source": "/ai-agent-fleet", "destination": "/ai-agent-fleet/index.html" },
-    { "source": "/sobre-mi", "destination": "/sobre-mi/index.html" },
-    { "source": "/about", "destination": "/about/index.html" },
-    { "source": "/privacidad", "destination": "/privacidad/index.html" },
-    { "source": "/privacy", "destination": "/privacy/index.html" }
-  ],
-  "crons": [
-    {
-      "path": "/api/cron/evaluate",
-      "schedule": "0 8 * * *"
-    }
   ]
 }
