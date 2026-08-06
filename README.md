@@ -49,9 +49,12 @@ npm install
 npm run dev
 ```
 
-Open [localhost:5173](http://localhost:5173). No environment variables are required for the current build —
-Phase 1 has no live AI infrastructure. Later phases will need API keys (Claude, Supabase, Langfuse, etc.); see
-the roadmap for what each phase adds.
+Open [localhost:5173](http://localhost:5173). The homepage itself needs no environment variables. The chat
+widget (`api/chat.js`, Phase 2) needs `ANTHROPIC_API_KEY`, `GOOGLE_API_KEY`, `SUPABASE_URL`,
+`SUPABASE_SERVICE_ROLE_KEY` — see `.env.local.example`. `LANGFUSE_*`/`RESEND_API_KEY` are optional (tracing
+and jailbreak alerts; the chat pipeline degrades gracefully without them). Note `npm run dev` is plain Vite —
+it does not run the `api/*.js` Edge functions locally (no Vercel CLI installed); see `CLAUDE.md` for how to
+exercise the chat handler directly instead.
 
 ---
 
@@ -66,11 +69,12 @@ src/
 ├── articles/
 │   └── registry.ts        # Case-study registry — emptied of Santiago's articles, type shape kept for mine
 │
-├── FloatingChat.tsx, useVoiceMode.ts, VoiceOrb.tsx    # Dormant chatbot/voice widget — Phase 2/4
-└── ops/                                                # Dormant LLMOps dashboard — Phase 4
+├── FloatingChat.tsx        # Live chat widget — TJ persona, text-only (Phase 2)
+├── useVoiceMode.ts, VoiceOrb.tsx    # Dormant voice-mode UI — Phase 4
+└── ops/                              # Dormant LLMOps dashboard — Phase 4
 
 api/
-├── chat.js, _shared/rag.js, _shared/prompt.js    # Dormant chatbot + RAG pipeline — Phase 2
+├── chat.js, _shared/rag.js, _shared/prompt.js    # Live chatbot + RAG pipeline — Phase 2
 └── ops/                                           # Dormant dashboard API layer — Phase 4
 
 evals/, tests/ops-*.test.ts    # Dormant eval suite (71 cases, asserts facts about Santiago) — Phase 3

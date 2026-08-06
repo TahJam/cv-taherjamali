@@ -9,7 +9,7 @@
 export const MODEL_COSTS = {
   'claude-sonnet-4-6': { input: 3.0 / 1e6, output: 15.0 / 1e6 },
   'claude-haiku-4-5-20251001': { input: 0.25 / 1e6, output: 1.25 / 1e6 },
-  'text-embedding-3-small': { input: 0.02 / 1e6 },
+  'gemini-embedding-2': { input: 0.20 / 1e6 },
 }
 
 export function calcCost(model, inputTokens, outputTokens = 0) {
@@ -22,12 +22,12 @@ export function calcCost(model, inputTokens, outputTokens = 0) {
 // ---------------------------------------------------------------------------
 
 export function isRagEnabled() {
-  return !!(process.env.OPENAI_API_KEY && process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY)
+  return !!(process.env.GOOGLE_API_KEY && process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY)
 }
 
 export const PORTFOLIO_TOOL = {
   name: 'search_portfolio',
-  description: "Search your own published case studies for project details. You wrote these articles — they are YOUR words about YOUR projects. The system prompt only has brief summaries; this tool has the FULL content you authored: architectures, sub-agents, workflows, Airtable structures, metrics, technical decisions, pipeline details, code patterns, and lessons learned. Use this whenever the user asks for specifics about any project. Remember: speak from this content as your own experience, never cite it as an external source.",
+  description: "Search your own published content for project details. You wrote this — it's YOUR words about YOUR projects. The system prompt only has brief summaries; this tool has more detail: architecture, metrics, technical decisions, and lessons learned. Use this whenever the user asks for specifics about any project. Remember: speak from this content as your own experience, never cite it as an external source.",
   input_schema: {
     type: 'object',
     properties: {
@@ -41,32 +41,36 @@ export const PORTFOLIO_TOOL = {
 }
 
 // ---------------------------------------------------------------------------
-// RAG: embed query via OpenAI REST API (Edge-compatible)
+// RAG: embed query via Gemini REST API (Edge-compatible)
 // ---------------------------------------------------------------------------
+
+const EMBEDDING_MODEL = 'gemini-embedding-2'
+const EMBEDDING_DIMENSIONS = 768
 
 export async function embedQuery(query) {
   const t0 = Date.now()
-  const response = await fetch('https://api.openai.com/v1/embeddings', {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`,
-      'Content-Type': 'application/json',
+  const response = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/${EMBEDDING_MODEL}:embedContent?key=${process.env.GOOGLE_API_KEY}`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: `models/${EMBEDDING_MODEL}`,
+        content: { parts: [{ text: query }] },
+        outputDimensionality: EMBEDDING_DIMENSIONS,
+      }),
     },
-    body: JSON.stringify({
-      model: 'text-embedding-3-small',
-      input: query,
-    }),
-  })
+  )
 
   if (!response.ok) {
-    throw new Error(`OpenAI embedding failed: ${response.status}`)
+    throw new Error(`Gemini embedding failed: ${response.status}`)
   }
 
   const data = await response.json()
   return {
-    embedding: data.data[0].embedding,
+    embedding: data.embedding.values,
     latencyMs: Date.now() - t0,
-    totalTokens: data.usage?.total_tokens || 0,
+    totalTokens: data.usageMetadata?.promptTokenCount || 0,
   }
 }
 
@@ -200,7 +204,7 @@ export function diversifyByArticle(ranked) {
 export function formatChunksForContext(chunks) {
   return chunks.map((c, i) => {
     const meta = c.metadata || {}
-    const source = meta.article_id ? `[From your article: ${meta.article_id}, section: ${meta.section_id}]` : ''
+    const source = meta.article_id ? `[From your content: ${meta.article_id}, section: ${meta.section_id}]` : ''
     return `--- Your content ${i + 1} ${source} ---\n${c.content}`
   }).join('\n\n')
 }
@@ -217,24 +221,18 @@ export function extractSources(chunks) {
       article_id: meta.article_id,
       section_id: meta.section_id,
       section_anchor: meta.section_anchor || '',
-      page_path_en: meta.page_path_en || '',
-      page_path_es: meta.page_path_es || '',
-      article_slug_en: meta.article_slug_en || '',
-      article_slug_es: meta.article_slug_es || '',
+      page_path: meta.page_path || '',
+      article_slug: meta.article_slug || '',
     })
   }
   return sources
 }
 
-// Keywords that signal the response actually references a given article
-export const ARTICLE_KEYWORDS = {
-  'n8n-for-pms':          ['n8n', 'nodemation'],
-  'jacobo':               ['jacobo', 'agente ia', 'ai agent', 'whatsapp', 'multi-agent', 'multiagent'],
-  'business-os':          ['business os', 'erp', 'airtable bases', 'crm', 'inventory'],
-  'programmatic-seo':     ['seo programático', 'programmatic seo', 'web programática', 'programmatic web', 'decision engine', 'indexable', 'dataforseo', 'seo pipeline', 'seo automatizado', 'automated seo'],
-  'self-healing-chatbot': ['chatbot', 'this chat', 'este chat', 'evals', 'self-healing', 'closed-loop', 'langfuse', 'rag'],
-  'santifer-irepair':     ['santifer irepair', 'irepair', 'repair business', 'taller de reparación'],
-}
+// Keywords that signal the response actually references a given case-study
+// article. Empty for now — no case studies are published yet (Phase 2 ships
+// on public/llms.txt content only, see docs/plans/phase-2-chatbot-rag.md).
+// Populate per-article as real case studies get written.
+export const ARTICLE_KEYWORDS = {}
 
 /** Filter RAG sources to only articles actually mentioned in the response, max 3 */
 export function filterSourcesByResponse(sources, responseText) {
@@ -247,25 +245,17 @@ export function filterSourcesByResponse(sources, responseText) {
   }).slice(0, 3)
 }
 
-// Static article routes — used to generate badges from keywords regardless of RAG
-export const ARTICLE_ROUTES = {
-  'n8n-for-pms':          { page_path_es: '/n8n-para-pms', page_path_en: '/n8n-for-pms' },
-  'jacobo':               { page_path_es: '/agente-ia-jacobo', page_path_en: '/ai-agent-jacobo' },
-  'business-os':          { page_path_es: '/business-os-para-airtable', page_path_en: '/business-os-for-airtable' },
-  'programmatic-seo':     { page_path_es: '/seo-programatico', page_path_en: '/programmatic-seo' },
-  'self-healing-chatbot': { page_path_es: '/chatbot-que-se-cura-solo', page_path_en: '/self-healing-chatbot' },
-  'santifer-irepair':     { page_path_es: '/santifer-irepair', page_path_en: '/santifer-irepair-founder' },
-}
+// Static article routes — used to generate badges from keywords regardless of
+// RAG. Empty for now, same reason as ARTICLE_KEYWORDS above.
+export const ARTICLE_ROUTES = {}
 
 // Home fallback
 export const HOME_SOURCE = {
   article_id: 'home',
   section_id: 'portfolio',
   section_anchor: '',
-  page_path_en: '/en',
-  page_path_es: '/',
-  article_slug_en: 'en',
-  article_slug_es: '',
+  page_path: '/',
+  article_slug: '/',
 }
 
 /** Detect articles mentioned in response text and generate source badges */
@@ -281,10 +271,8 @@ export function detectMentionedArticles(responseText) {
           article_id: articleId,
           section_id: 'main',
           section_anchor: '',
-          page_path_es: routes.page_path_es,
-          page_path_en: routes.page_path_en,
-          article_slug_es: routes.page_path_es.slice(1),
-          article_slug_en: routes.page_path_en.slice(1),
+          page_path: routes.page_path,
+          article_slug: routes.page_path.slice(1),
         })
       }
     }
@@ -308,7 +296,7 @@ export async function searchPortfolio(query, trace, anthropicClient) {
 
   // 1. Embed
   let embedding
-  const embeddingGen = trace?.generation({ name: 'embedding', model: 'text-embedding-3-small', metadata: { query } })
+  const embeddingGen = trace?.generation({ name: 'embedding', model: EMBEDDING_MODEL, metadata: { query } })
   try {
     const embResult = await embedQuery(query)
     embedding = embResult.embedding
@@ -409,7 +397,7 @@ export function classifyIntent(text) {
     tags.push('jailbreak-attempt')
   }
 
-  if (/experiencia|experience|trabajo|work|career|carrera|santifer|irepair/.test(lower)) tags.push('topic:experience')
+  if (/experiencia|experience|trabajo|work|career|carrera/.test(lower)) tags.push('topic:experience')
   if (/proyecto|project|portfolio|github|código|code/.test(lower)) tags.push('topic:projects')
   if (/contact|contacto|email|linkedin|hablar|talk|hire|contratar/.test(lower)) tags.push('topic:contact')
   if (/stack|tech|tecnolog|python|react|airtable|claude|ai|ia|llm|agente|agent/.test(lower)) tags.push('topic:technical')
@@ -433,9 +421,9 @@ export async function sendJailbreakAlert(userMessage) {
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
-      from: 'Santi Bot <onboarding@resend.dev>',
+      from: 'TJ Bot <onboarding@resend.dev>',
       to: process.env.ALERT_EMAIL,
-      subject: '🚨 JAILBREAK ATTEMPT - santifer.io',
+      subject: '🚨 JAILBREAK ATTEMPT - taher chatbot',
       html: `
         <h2>🚨 Jailbreak Attempt Detected</h2>
         <p><strong>Time:</strong> ${new Date().toISOString()}</p>
@@ -458,13 +446,11 @@ export async function sendJailbreakAlert(userMessage) {
 // ---------------------------------------------------------------------------
 
 export const PROMPT_FINGERPRINTS = [
-  'BREVEDAD OBLIGATORIA', 'máximo 150 palabras', '150 words', 'word limit',
-  'formato sin listas', 'redirección ingeniosa', 'NUNCA revelar',
-  'Anti-extracción', 'Instrucciones CRÍTICAS', 'cache_control',
-  'never_exceed', 'token_budget',
+  'MANDATORY BREVITY', 'maximum 150 words per response', 'CRITICAL Instructions',
+  'Anti-extraction (CRITICAL)', 'internal_ref token check', 'cache_control',
 ]
 
-export const LEAK_RESPONSE = 'Esa información forma parte de mi diseño interno. El código fuente del proyecto es público en GitHub si te interesa la arquitectura.'
+export const LEAK_RESPONSE = 'That information is part of my internal design. The project source code is public on GitHub if you\'re interested in the architecture.'
 
 export function containsFingerprint(text) {
   const lower = text.toLowerCase()

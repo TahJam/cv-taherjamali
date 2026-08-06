@@ -26,18 +26,16 @@ export interface ArticleSeoMeta {
 
 export interface ArticleConfig {
   id: string
-  slugs: { es: string; en: string }
-  titles: { es: string; en: string }
-  seo: { es: ArticleSeo; en: ArticleSeo }
-  sectionLabels: { es: Record<string, string>; en: Record<string, string> }
+  slug: string
+  title: string
+  seo: ArticleSeo
+  sectionLabels: Record<string, string>
   type: 'collab' | 'case-study' | 'bridge'
   /** Absolute OG image URL for prerender (social cards: LinkedIn, Twitter) */
   ogImage?: string
   /** Hero image path for JSON-LD / GEO (what AI search engines see). Falls back to ogImage if not set. */
   heroImage?: string
-  component: () => Promise<{ default: ComponentType<{ lang: 'es' | 'en' }> }>
-  /** x-default hreflang slug (defaults to ES slug) */
-  xDefaultSlug?: string
+  component: () => Promise<{ default: ComponentType }>
   /** Whether this article is ready for RAG indexing (default: false) */
   ragReady?: boolean
   /** Path to i18n content file relative to project root (required when ragReady=true) */
@@ -48,33 +46,13 @@ export interface ArticleConfig {
 
 export const articleRegistry: ArticleConfig[] = []
 
-// Derived maps for GlobalNav and routing
-export function getAltPaths(): Record<string, string> {
-  const map: Record<string, string> = {
-    '/': '/en',
-    '/en': '/',
-    '/sobre-mi': '/about',
-    '/about': '/sobre-mi',
-    '/privacidad': '/privacy',
-    '/privacy': '/privacidad',
-  }
-  for (const article of articleRegistry) {
-    map[`/${article.slugs.es}`] = `/${article.slugs.en}`
-    map[`/${article.slugs.en}`] = `/${article.slugs.es}`
-  }
-  return map
-}
-
+// Derived maps for GlobalNav and RAG source badges
 export function getPageTitles(): Record<string, string> {
   const map: Record<string, string> = {
-    '/': 'Portfolio de Santiago',
-    '/en': "Santiago's Portfolio",
-    '/sobre-mi': 'Sobre Mí',
-    '/about': 'About',
+    '/': 'Taher Jamali',
   }
   for (const article of articleRegistry) {
-    map[`/${article.slugs.es}`] = article.titles.es
-    map[`/${article.slugs.en}`] = article.titles.en
+    map[`/${article.slug}`] = article.title
   }
   return map
 }
@@ -82,17 +60,7 @@ export function getPageTitles(): Record<string, string> {
 export function getSectionLabels(): Record<string, Record<string, string>> {
   const map: Record<string, Record<string, string>> = {}
   for (const article of articleRegistry) {
-    map[`/${article.slugs.es}`] = article.sectionLabels.es
-    map[`/${article.slugs.en}`] = article.sectionLabels.en
+    map[`/${article.slug}`] = article.sectionLabels
   }
   return map
-}
-
-/** All ES slugs (for lang detection: if pathname matches an ES slug → lang is 'es') */
-export function getEsSlugs(): Set<string> {
-  const slugs = new Set<string>(['/', '/privacidad', '/sobre-mi'])
-  for (const article of articleRegistry) {
-    slugs.add(`/${article.slugs.es}`)
-  }
-  return slugs
 }

@@ -1,5 +1,10 @@
--- RAG Setup for santifer.io chatbot
+-- RAG Setup for Taher's chatbot
 -- Run this in Supabase SQL Editor (Dashboard → SQL Editor → New Query)
+--
+-- Embedding model: gemini-embedding-2, truncated to 768 dims via outputDimensionality
+-- (Matryoshka representation) — see docs/plans/phase-2-chatbot-rag.md for why. The
+-- original santifer.io schema used vector(1536) for OpenAI text-embedding-3-small;
+-- 768 here is NOT a typo, it's the deliberate replacement.
 
 -- 1. Enable pgvector extension
 create extension if not exists vector with schema extensions;
@@ -9,14 +14,14 @@ create table if not exists public.documents (
   id bigserial primary key,
   content text not null,
   metadata jsonb default '{}'::jsonb,
-  embedding vector(1536),
+  embedding vector(768),
   fts tsvector generated always as (to_tsvector('english', content)) stored
 );
 
 -- 3. Hybrid search function (vector similarity + BM25 keyword match)
 create or replace function hybrid_search (
   query_text text,
-  query_embedding vector(1536),
+  query_embedding vector(768),
   match_count int default 10,
   semantic_weight float default 0.7,
   keyword_weight float default 0.3,

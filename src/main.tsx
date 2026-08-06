@@ -5,6 +5,7 @@ import { Analytics } from '@vercel/analytics/react'
 import './index.css'
 import App from './App.tsx'
 import GlobalNav from './GlobalNav.tsx'
+import FloatingChat from './FloatingChat.tsx'
 
 const OpsDashboard = lazy(() => import('./ops/OpsDashboard'))
 
@@ -56,6 +57,12 @@ function ConditionalNav() {
   return <GlobalNav />
 }
 
+function ConditionalChat() {
+  const { pathname } = useLocation()
+  if (pathname.startsWith('/ops')) return null
+  return <FloatingChat />
+}
+
 function NotFound() {
   useEffect(() => {
     let robots = document.querySelector('meta[name="robots"]') as HTMLMetaElement
@@ -96,6 +103,7 @@ const app = (
           </Routes>
         </Suspense>
       </PageTransition>
+      <ConditionalChat />
       <Analytics />
     </BrowserRouter>
   </StrictMode>

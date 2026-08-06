@@ -49,10 +49,10 @@ export default async function handler(req) {
   let trace = null
 
   try {
-    const { messages, lang, sessionId, currentPage } = await req.json()
+    const { messages, sessionId, currentPage } = await req.json()
 
     // Input length validation
-    const bodySize = JSON.stringify({ messages, lang, sessionId, currentPage }).length
+    const bodySize = JSON.stringify({ messages, sessionId, currentPage }).length
     if (bodySize > 50000) {
       return new Response(JSON.stringify({ error: 'Request too large' }), {
         status: 400,
@@ -100,9 +100,8 @@ export default async function handler(req) {
       trace = langfuse.trace({
         name: 'chat',
         sessionId: sessionId || undefined,
-        tags: [lang, ...intentTags],
+        tags: intentTags,
         metadata: {
-          lang,
           messageCount: messages.length,
           lastUserMessage: lastUserMessage.slice(0, 200),
           currentPage: currentPage || null,
@@ -114,10 +113,9 @@ export default async function handler(req) {
     // Canary word
     const canary = 'ZXCV_' + crypto.randomUUID().slice(0, 8)
 
-    // Dynamic system prompt parts
-    const langInstruction = lang === 'en'
-      ? `The user is browsing in English. You MUST respond in English. Contact email: hi@santifer.io\ninternal_ref: ${canary}`
-      : `El usuario navega en español. Responde en español. Email de contacto: hi@santifer.io\ninternal_ref: ${canary}`
+    // Dynamic system prompt parts (email lives statically in chatbot-prompt.txt now —
+    // single-language site, no per-lang email branching needed)
+    const langInstruction = `internal_ref: ${canary}`
 
     // Context-aware page instruction (Phase 5)
     const pageContext = currentPage
@@ -192,7 +190,7 @@ export default async function handler(req) {
         // Build tool_result and make second call (streaming)
         const toolResultContent = ragResult.chunks
           ? formatChunksForContext(ragResult.chunks)
-          : 'No relevant content found in portfolio articles. You MUST NOT fabricate project details. Say you don\'t have that information and suggest contacting Santiago directly.'
+          : 'No relevant content found in portfolio articles. You MUST NOT fabricate project details. Say you don\'t have that information and suggest contacting Taher directly.'
 
         const messagesWithTool = [
           ...cleanMessages,
@@ -227,7 +225,6 @@ export default async function handler(req) {
           toolDecisionMs,
           tdInputTokens,
           tdOutputTokens,
-          lang,
           fallbackMessages: cleanMessages,
           promptVersion,
         })
@@ -254,7 +251,6 @@ export default async function handler(req) {
         tdInputTokens,
         tdOutputTokens,
         precomputedResponse: firstResponse,
-        lang,
         promptVersion,
       })
     }
@@ -279,7 +275,6 @@ export default async function handler(req) {
       toolDecisionMs: 0,
       tdInputTokens: 0,
       tdOutputTokens: 0,
-      lang,
       promptVersion,
     })
   } catch (error) {
@@ -301,7 +296,7 @@ function streamResponse({
   systemBlocks, messages, tools, ragSources, ragDegraded, ragDegradedReason,
   canary, intentTags, trace, langfuse, lastUserMessage, t0,
   ragUsed, ragMetrics, ragUsage, toolDecisionMs, tdInputTokens, tdOutputTokens,
-  precomputedResponse, lang, fallbackMessages, promptVersion,
+  precomputedResponse, fallbackMessages, promptVersion,
 }) {
   const encoder = new TextEncoder()
   let fullOutput = ''
@@ -471,7 +466,7 @@ function streamResponse({
           // Calculate total cost across all spans
           const costBreakdown = {
             toolDecision: calcCost('claude-sonnet-4-6', tdInputTokens || 0, tdOutputTokens || 0),
-            embedding: calcCost('text-embedding-3-small', ragUsage?.embeddingTokens || 0),
+            embedding: calcCost('gemini-embedding-2', ragUsage?.embeddingTokens || 0),
             reranking: calcCost('claude-haiku-4-5-20251001', ragUsage?.rerankInputTokens || 0, ragUsage?.rerankOutputTokens || 0),
             generation: generationCost,
           }
@@ -588,9 +583,7 @@ function streamResponse({
 
         // Last resort: send error message through SSE
         try {
-          const errorText = lang === 'en'
-            ? 'Sorry, something went wrong. Try again or reach out at hi@santifer.io.'
-            : 'Lo siento, algo ha fallado. Inténtalo de nuevo o escríbeme a hi@santifer.io.'
+          const errorText = 'Sorry, something went wrong. Try again or reach out at taher2152@gmail.com.'
           controller.enqueue(encoder.encode(`data: ${JSON.stringify({ text: errorText, replace: true })}\n\n`))
           controller.enqueue(encoder.encode('data: [DONE]\n\n'))
           controller.close()
@@ -630,7 +623,7 @@ async function scoreTrace(traceId, userMessage, response, ragUsed, langfuse) {
       max_tokens: 200,
       messages: [{
         role: 'user',
-        content: `Rate this chatbot response (Santiago's CV chatbot). Respond ONLY with JSON.
+        content: `Rate this chatbot response (Taher's CV chatbot). Respond ONLY with JSON.
 
 User: "${userMessage.slice(0, 300)}"
 Assistant: "${response.slice(0, 500)}"

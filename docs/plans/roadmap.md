@@ -35,7 +35,7 @@ These apply across all phases; don't relitigate them without a reason:
 | Phase | Name | Status |
 |---|---|---|
 | 1 | Foundation & Branding | ✅ Done |
-| 2 | Text Chatbot + RAG | Not started |
+| 2 | Text Chatbot + RAG | ✅ Done |
 | 3 | Evals + Prompt-Injection Defense | Not started |
 | 4 | Voice Mode + `/ops` LLMOps Dashboard | Not started |
 
@@ -82,23 +82,45 @@ layer right before touching anything AI-related.
 
 ---
 
-## Phase 2 — Text Chatbot + RAG
+## Phase 2 — Text Chatbot + RAG ✅ Done
 
 **Goal:** a working text chatbot on the site, backed by RAG over my real content, with a rewritten
 persona — the interactive/agentic layer that makes this a "digital CV" rather than a static resume.
 
-**Existing scaffolding (dormant, built for Santiago, needs adaptation not a rewrite-from-zero):**
-`api/chat.js`, `api/_shared/rag.js`, `api/_shared/prompt.js`, `src/FloatingChat.tsx`, `chatbot-prompt.txt`.
-`chatbot-prompt.txt` needs a full persona/facts rewrite for me, not a find-replace — same for the RAG
-source content the chat tool searches over.
+Full investigate/plan/test/implement writeup: **[`docs/plans/phase-2-chatbot-rag.md`](phase-2-chatbot-rag.md)**.
 
-**Rough scope (detail goes in `phase-2-chatbot-rag.md` when this starts):**
-- Rewrite `chatbot-prompt.txt` persona/facts for me.
-- Wire RAG source content to my real project/experience detail (respecting the same content-sensitivity
-  rule as the site copy).
-- Re-render `FloatingChat.tsx` in `src/main.tsx`.
-- Re-add the RAG sync step to the build pipeline once there's real content to sync.
-- Update LLM models to include Google Gemini models and remove OpenAI models.
+**Scope:**
+- Rewrote `chatbot-prompt.txt` as **TJ**, a distinct first-person persona — English, generalized per the
+  content-sensitivity rule (Apple/SAP BTP/Cloud Foundry nameable, internal tool names/tickets not), kept
+  Santiago's solid generic prompt-engineering patterns (brevity rules, anti-extraction, boundary handling,
+  off-topic redirects) while swapping all content.
+- Swapped embeddings from OpenAI (`text-embedding-3-small`) to Gemini (`gemini-embedding-2`, truncated to 768
+  dims via Matryoshka) — validated model choice, Supabase schema, and end-to-end retrieval with real scratch
+  scripts before touching production code (see the plan doc's Test-stage section). Removed the `openai`
+  package dependency entirely — nothing in the live app needs it anymore.
+- RAG content source: bootstrapped from `public/llms.txt` (found and fixed a real chunking bug in the
+  process — the plaintext parser built for this file produced junk bare-header chunks; the markdown parser,
+  previously unused, handles it correctly). No case-study articles exist yet, so `ARTICLE_KEYWORDS`/
+  `ARTICLE_ROUTES` in `rag.js` are intentionally empty for now — will populate as real articles get written.
+- Stripped `FloatingChat.tsx`'s voice-mode and bilingual (`i18n.ts`) coupling — both were threaded through
+  ~15 places each. Deleted `src/i18n.ts` entirely once nothing referenced it. Simplified
+  `src/articles/registry.ts`'s `ArticleConfig` type from `{es, en}` slug/title pairs to single-path English.
+- Re-rendered the chat widget in `src/main.tsx`, hidden on `/ops` like the nav.
+- Set up new Supabase, Langfuse, Resend, and Google AI accounts; re-added `rag:sync` to `npm run build`
+  (degrades gracefully if env vars are missing, so it won't break a deploy that hasn't set them up).
+- Caught a real bug in Test-stage validation before it shipped: the draft prompt hallucinated a plausible
+  but fake contact email when tested standalone, because the real email was injected dynamically per-request
+  (a bilingual-era leftover). Fixed by baking the real email directly into the static prompt instead.
+- Verified the full pipeline end-to-end by invoking `api/chat.js`'s exported handler directly with a real
+  `Request` object (no Vercel CLI installed locally, so no `vercel dev`) — confirmed RAG retrieval, streaming,
+  and Langfuse's graceful fallback all work against the real Supabase index.
+
+**Explicitly deferred to later (not blockers, just not done):**
+- Real case-study articles — RAG runs on `llms.txt` only for now; richer, section-anchored content comes as
+  articles get written.
+- Chat avatar image — still a placeholder (`TJ` monogram), same unresolved headshot decision as the hero.
+- Prompt sync to Langfuse (`npm run prompt:sync`) — not run yet; the chat pipeline correctly falls back to
+  the local `chatbot-prompt.txt` file when nothing's synced, so this isn't blocking, just not done.
 
 **Depends on:** Phase 1 content being stable (RAG needs real source material to index).
 
@@ -131,12 +153,11 @@ content.
 production (conversations, costs, RAG, security, evals, voice, prompts, system health).
 
 **Existing scaffolding (dormant):** `src/useVoiceMode.ts`, `src/VoiceOrb.tsx`, `src/useAudioAnalyser.ts`,
-`src/ops/`, `api/ops/`. The dashboard reads from Langfuse + Supabase — needs my own accounts for those
-services before there's real data to show; currently routed at `/ops` but unlinked from the UI and non
-functional without those accounts.
+`src/ops/`, `api/ops/`. The dashboard reads from Langfuse + Supabase — both accounts already exist (set up in
+Phase 2 for RAG) — but the dashboard itself is still unwired; currently routed at `/ops` but unlinked from the
+UI and non functional.
 
 **Rough scope (detail goes in `phase-4-voice-ops.md` when this starts):**
-- Set up my own Langfuse + Supabase accounts/projects.
 - Wire voice mode into `FloatingChat.tsx`.
 - Point `/ops` at real data; decide on its auth/password setup.
 - Update the ops dashboard to use Google Gemini models and remove OpenAI models.

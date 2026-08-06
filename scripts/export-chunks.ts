@@ -1,10 +1,9 @@
 /**
- * Export article content into normalized JSON chunks for RAG indexing.
+ * Export content into normalized JSON chunks for RAG indexing.
  *
  * Supports multiple input formats via pluggable parsers:
- *   - i18n TypeScript objects (articles)
- *   - Plaintext (llms.txt)
- *   - Markdown (future)
+ *   - i18n TypeScript objects (case-study articles, once written)
+ *   - Markdown (llms.txt today; any future markdown source)
  *
  * Output: scripts/chunks/{source}.json
  *
@@ -12,8 +11,7 @@
  *   npx tsx --tsconfig tsconfig.app.json scripts/export-chunks.ts
  */
 
-import { writeFileSync, mkdirSync } from 'node:fs'
-import { readFileSync } from 'node:fs'
+import { writeFileSync, mkdirSync, readFileSync } from 'node:fs'
 import { resolve, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { articleRegistry } from '../src/articles/registry.ts'
@@ -28,14 +26,12 @@ const CHUNKS_DIR = resolve(root, 'scripts/chunks')
 
 interface ChunkMetadata {
   article_id: string
-  article_slug_en: string
-  article_slug_es: string
+  article_slug: string
   section_id: string
   section_anchor: string
-  page_path_en: string
-  page_path_es: string
+  page_path: string
   source_file: string
-  format: 'i18n' | 'markdown' | 'plaintext'
+  format: 'i18n' | 'markdown'
 }
 
 interface Chunk {
@@ -93,7 +89,7 @@ function extractText(obj: unknown, depth = 0): string {
 }
 
 // ---------------------------------------------------------------------------
-// Parser 1: i18n TypeScript objects
+// Parser 1: i18n TypeScript objects (case-study articles)
 // ---------------------------------------------------------------------------
 
 interface I18nSource {
@@ -137,18 +133,12 @@ function parseI18n(source: I18nSource): Chunk[] {
     return []
   }
 
-  const en = source.content.en as Record<string, unknown> | undefined
-  if (!en) {
-    console.warn(`  ⚠ No .en key found in ${source.sourceFile}, skipping`)
-    return []
-  }
+  const content = source.content as Record<string, unknown>
 
   const baseMetadata: Omit<ChunkMetadata, 'section_id' | 'section_anchor'> = {
     article_id: source.articleId,
-    article_slug_en: `/${article.slugs.en}`,
-    article_slug_es: `/${article.slugs.es}`,
-    page_path_en: `/${article.slugs.en}`,
-    page_path_es: `/${article.slugs.es}`,
+    article_slug: `/${article.slug}`,
+    page_path: `/${article.slug}`,
     source_file: source.sourceFile,
     format: 'i18n',
   }
@@ -156,7 +146,7 @@ function parseI18n(source: I18nSource): Chunk[] {
   const chunks: Chunk[] = []
 
   // Build anchor lookup from registry sectionLabels (source of truth for HTML IDs)
-  const registryAnchors = new Set(Object.keys(article.sectionLabels.en))
+  const registryAnchors = new Set(Object.keys(article.sectionLabels))
 
   // Helper: resolve the correct HTML anchor for a given i18n key
   const resolveAnchor = (key: string): string => {
@@ -170,9 +160,9 @@ function parseI18n(source: I18nSource): Chunk[] {
 
   // Extract header + intro as a single "intro" chunk
   const introText = [
-    extractText(en.header),
-    extractText(en.intro),
-    typeof en.tldr === 'string' ? stripHtml(en.tldr) : extractText(en.tldr),
+    extractText(content.header),
+    extractText(content.intro),
+    typeof content.tldr === 'string' ? stripHtml(content.tldr) : extractText(content.tldr),
   ].filter(Boolean).join('\n')
 
   if (introText.trim()) {
@@ -183,8 +173,8 @@ function parseI18n(source: I18nSource): Chunk[] {
   }
 
   // Extract heroMetrics
-  if (en.heroMetrics) {
-    const metricsText = extractText(en.heroMetrics)
+  if (content.heroMetrics) {
+    const metricsText = extractText(content.heroMetrics)
     if (metricsText.trim()) {
       chunks.push({
         content: metricsText.trim(),
@@ -193,8 +183,8 @@ function parseI18n(source: I18nSource): Chunk[] {
     }
   }
 
-  // Extract each section (nested under en.sections) — only if it has a real page anchor
-  const sections = en.sections as Record<string, unknown> | undefined
+  // Extract each section (nested under content.sections) — only if it has a real page anchor
+  const sections = content.sections as Record<string, unknown> | undefined
   if (sections && typeof sections === 'object') {
     for (const [sectionKey, sectionValue] of Object.entries(sections)) {
       const anchor = resolveAnchor(sectionKey)
@@ -214,8 +204,8 @@ function parseI18n(source: I18nSource): Chunk[] {
   }
 
   // Extract top-level content keys — only those with a real page anchor
-  const skipKeys = new Set(['en', 'es', 'header', 'intro', 'tldr', 'heroMetrics', 'sections'])
-  for (const [key, value] of Object.entries(en)) {
+  const skipKeys = new Set(['header', 'intro', 'tldr', 'heroMetrics', 'sections'])
+  for (const [key, value] of Object.entries(content)) {
     if (skipKeys.has(key)) continue
     if (sections && key in sections) continue
     const anchor = resolveAnchor(key)
@@ -236,58 +226,26 @@ function parseI18n(source: I18nSource): Chunk[] {
 }
 
 // ---------------------------------------------------------------------------
-// Parser 2: Plaintext (llms.txt)
+// Parser 2: Markdown (llms.txt today; any future markdown source)
 // ---------------------------------------------------------------------------
 
-function parsePlaintext(filePath: string, articleId: string): Chunk[] {
-  const fullPath = resolve(root, filePath)
-  let content: string
-  try {
-    content = readFileSync(fullPath, 'utf-8')
-  } catch {
-    console.warn(`  ⚠ File ${filePath} not found, skipping`)
-    return []
-  }
-
-  // Split by double newlines or section headers
-  const sections = content.split(/\n{2,}/)
-  const chunks: Chunk[] = []
-  let currentSection = 'general'
-
-  for (const block of sections) {
-    const trimmed = block.trim()
-    if (!trimmed) continue
-
-    // Detect section headers (lines starting with ## or all caps)
-    const headerMatch = trimmed.match(/^##?\s+(.+)/)
-    if (headerMatch) {
-      currentSection = headerMatch[1].toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
-    }
-
-    chunks.push({
-      content: trimmed,
-      metadata: {
-        article_id: articleId,
-        article_slug_en: '',
-        article_slug_es: '',
-        section_id: currentSection,
-        section_anchor: '',
-        page_path_en: '/llms.txt',
-        page_path_es: '/llms.txt',
-        source_file: filePath,
-        format: 'plaintext',
-      },
-    })
-  }
-
-  return chunks
+/**
+ * Maps a markdown ## section heading (kebab-cased) to the real HTML anchor on
+ * the homepage it corresponds to, so RAG source badges link somewhere real.
+ * See src/App.tsx for the actual section ids. Sections with no direct
+ * homepage counterpart (summary, featured-project) fall back to the closest
+ * relevant section rather than a dead anchor.
+ */
+const LLMS_TXT_SECTION_ANCHORS: Record<string, string> = {
+  'current-role': '#experience',
+  'prior-experience': '#experience',
+  'featured-project': '#projects',
+  'skills': '#tech',
+  'education': '#education',
+  'contact': '#contact',
 }
 
-// ---------------------------------------------------------------------------
-// Parser 3: Markdown (for future use)
-// ---------------------------------------------------------------------------
-
-function parseMarkdown(content: string, articleId: string, sourceFile: string): Chunk[] {
+function parseMarkdown(content: string, articleId: string, sourceFile: string, anchorMap: Record<string, string> = {}): Chunk[] {
   // Strip frontmatter
   const body = content.replace(/^---[\s\S]*?---\n/, '')
 
@@ -296,29 +254,29 @@ function parseMarkdown(content: string, articleId: string, sourceFile: string): 
   let currentH3 = ''
   let currentText = ''
 
+  const flush = () => {
+    if (!currentText.trim()) return
+    const sectionId = currentH3 || currentH2
+    chunks.push({
+      content: currentText.trim(),
+      metadata: {
+        article_id: articleId,
+        article_slug: '/',
+        section_id: sectionId,
+        section_anchor: anchorMap[sectionId] || '',
+        page_path: '/',
+        source_file: sourceFile,
+        format: 'markdown',
+      },
+    })
+  }
+
   for (const line of body.split('\n')) {
     const h2Match = line.match(/^##\s+(.+)/)
     const h3Match = line.match(/^###\s+(.+)/)
 
     if (h2Match || h3Match) {
-      // Flush current text
-      if (currentText.trim()) {
-        const sectionId = currentH3 || currentH2
-        chunks.push({
-          content: currentText.trim(),
-          metadata: {
-            article_id: articleId,
-            article_slug_en: '',
-            article_slug_es: '',
-            section_id: sectionId,
-            section_anchor: `#${sectionId}`,
-            page_path_en: '',
-            page_path_es: '',
-            source_file: sourceFile,
-            format: 'markdown',
-          },
-        })
-      }
+      flush()
       currentText = ''
 
       if (h2Match) {
@@ -332,30 +290,10 @@ function parseMarkdown(content: string, articleId: string, sourceFile: string): 
     currentText += line + '\n'
   }
 
-  // Flush remaining
-  if (currentText.trim()) {
-    const sectionId = currentH3 || currentH2
-    chunks.push({
-      content: currentText.trim(),
-      metadata: {
-        article_id: articleId,
-        article_slug_en: '',
-        article_slug_es: '',
-        section_id: sectionId,
-        section_anchor: `#${sectionId}`,
-        page_path_en: '',
-        page_path_es: '',
-        source_file: sourceFile,
-        format: 'markdown',
-      },
-    })
-  }
+  flush()
 
   return chunks
 }
-
-// Expose for future use
-void parseMarkdown
 
 // ---------------------------------------------------------------------------
 // Main
@@ -366,10 +304,21 @@ async function main() {
 
   mkdirSync(CHUNKS_DIR, { recursive: true })
 
-  const i18nSources = await loadI18nSources()
   let totalChunks = 0
 
-  // Process i18n sources (already filtered to ragReady articles)
+  // Source 1: llms.txt (bootstrapped content — no case-study articles exist
+  // yet, per docs/plans/phase-2-chatbot-rag.md's staged content decision)
+  const llmsTxtPath = resolve(root, 'public/llms.txt')
+  const llmsTxtContent = readFileSync(llmsTxtPath, 'utf-8')
+  const llmsChunks = parseMarkdown(llmsTxtContent, 'home', 'public/llms.txt', LLMS_TXT_SECTION_ANCHORS)
+  if (llmsChunks.length > 0) {
+    writeFileSync(resolve(CHUNKS_DIR, 'home.json'), JSON.stringify(llmsChunks, null, 2))
+    console.log(`  ✓ home (llms.txt) → ${llmsChunks.length} chunks`)
+    totalChunks += llmsChunks.length
+  }
+
+  // Source 2: i18n case-study articles (none yet — populated as they're written)
+  const i18nSources = await loadI18nSources()
   for (const source of i18nSources) {
     const article = articleRegistry.find(a => a.id === source.articleId)!
 
@@ -377,7 +326,7 @@ async function main() {
     if (chunks.length === 0) continue
 
     // Validate: every non-empty section_anchor must exist in registry sectionLabels
-    const validAnchors = new Set(Object.keys(article.sectionLabels.en))
+    const validAnchors = new Set(Object.keys(article.sectionLabels))
     for (const chunk of chunks) {
       const anchor = chunk.metadata.section_anchor
       if (anchor) {

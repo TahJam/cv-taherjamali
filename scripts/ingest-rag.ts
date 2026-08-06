@@ -5,11 +5,12 @@
  *   - Change detection via content hashing (skip unchanged articles)
  *   - Chunk splitting for large sections (1000 chars, 200 overlap)
  *   - Contextual retrieval: prepend summary via Haiku before embedding
- *   - OpenAI text-embedding-3-small for embeddings (1536 dims)
+ *   - Gemini gemini-embedding-2 for embeddings, truncated to 768 dims
+ *     (see docs/plans/phase-2-chatbot-rag.md for why this model/dimension)
  *   - Upsert to Supabase `documents` table
  *
  * Requires env vars:
- *   OPENAI_API_KEY, SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
+ *   GOOGLE_API_KEY, SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
  *   ANTHROPIC_API_KEY (optional, for contextual retrieval)
  *
  * Usage:
@@ -24,7 +25,6 @@ import { readFileSync, writeFileSync, readdirSync, existsSync } from 'node:fs'
 import { resolve, dirname, basename } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { createHash } from 'node:crypto'
-import OpenAI from 'openai'
 import { createClient } from '@supabase/supabase-js'
 import Anthropic from '@anthropic-ai/sdk'
 import { articleRegistry } from '../src/articles/registry.ts'
@@ -40,18 +40,19 @@ const HASHES_FILE = resolve(root, '.rag-hashes.json')
 
 const MAX_CHUNK_SIZE = 1000    // characters
 const CHUNK_OVERLAP = 200      // characters
-const EMBEDDING_MODEL = 'text-embedding-3-small'
-const EMBEDDING_BATCH_SIZE = 20 // OpenAI allows up to 2048, but we batch for safety
+const EMBEDDING_MODEL = 'gemini-embedding-2'
+const EMBEDDING_DIMENSIONS = 768
+const EMBEDDING_BATCH_SIZE = 20
 
 // ---------------------------------------------------------------------------
 // Clients
 // ---------------------------------------------------------------------------
 
-function getOpenAI(): OpenAI {
-  if (!process.env.OPENAI_API_KEY) {
-    throw new Error('OPENAI_API_KEY is required')
+function requireGoogleApiKey(): string {
+  if (!process.env.GOOGLE_API_KEY) {
+    throw new Error('GOOGLE_API_KEY is required')
   }
-  return new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
+  return process.env.GOOGLE_API_KEY
 }
 
 function getSupabase() {
@@ -72,14 +73,12 @@ function getAnthropic(): Anthropic | null {
 
 interface ChunkMetadata {
   article_id: string
-  article_slug_en: string
-  article_slug_es: string
+  article_slug: string
   section_id: string
   section_anchor: string
-  page_path_en: string
-  page_path_es: string
+  page_path: string
   source_file: string
-  format: 'i18n' | 'markdown' | 'plaintext'
+  format: 'i18n' | 'markdown'
 }
 
 interface Chunk {
@@ -215,18 +214,34 @@ async function addContextualSummaries(
 // Embedding
 // ---------------------------------------------------------------------------
 
-async function embedTexts(texts: string[], openai: OpenAI): Promise<number[][]> {
+async function embedOne(text: string, apiKey: string): Promise<number[]> {
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${EMBEDDING_MODEL}:embedContent?key=${apiKey}`
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      model: `models/${EMBEDDING_MODEL}`,
+      content: { parts: [{ text }] },
+      outputDimensionality: EMBEDDING_DIMENSIONS,
+    }),
+  })
+  if (!res.ok) {
+    throw new Error(`Gemini embedding failed: ${res.status} ${await res.text()}`)
+  }
+  const data = await res.json() as { embedding: { values: number[] } }
+  return data.embedding.values
+}
+
+async function embedTexts(texts: string[], apiKey: string): Promise<number[][]> {
   const allEmbeddings: number[][] = []
 
+  // Gemini's embedContent is single-text per call (no batch endpoint like
+  // OpenAI's), so we chunk into small concurrent batches instead of one
+  // request per text sequentially.
   for (let i = 0; i < texts.length; i += EMBEDDING_BATCH_SIZE) {
     const batch = texts.slice(i, i + EMBEDDING_BATCH_SIZE)
-    const response = await openai.embeddings.create({
-      model: EMBEDDING_MODEL,
-      input: batch,
-    })
-    for (const item of response.data) {
-      allEmbeddings.push(item.embedding)
-    }
+    const embeddings = await Promise.all(batch.map(text => embedOne(text, apiKey)))
+    allEmbeddings.push(...embeddings)
   }
 
   return allEmbeddings
@@ -276,13 +291,13 @@ async function main() {
   console.log('🔄 RAG Ingestion starting...\n')
 
   // Check for env vars
-  if (!process.env.OPENAI_API_KEY || !process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
-    console.log('⚠️  Missing env vars (OPENAI_API_KEY, SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)')
+  if (!process.env.GOOGLE_API_KEY || !process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
+    console.log('⚠️  Missing env vars (GOOGLE_API_KEY, SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)')
     console.log('   Skipping RAG ingestion. Set env vars to enable.\n')
     process.exit(0) // Exit gracefully so build continues
   }
 
-  const openai = getOpenAI()
+  const googleApiKey = requireGoogleApiKey()
   const supabase = getSupabase()
   const anthropic = getAnthropic()
 
@@ -330,12 +345,12 @@ async function main() {
     console.log(`     → ${splitChunks.length} chunks after splitting`)
 
     // Contextual retrieval summaries
-    const articleTitle = article?.titles.en || articleId
+    const articleTitle = article?.title || articleId
     const enrichedTexts = await addContextualSummaries(splitChunks, articleTitle, anthropic)
 
     // Embed
     console.log(`     → Embedding ${enrichedTexts.length} chunks...`)
-    const embeddings = await embedTexts(enrichedTexts, openai)
+    const embeddings = await embedTexts(enrichedTexts, googleApiKey)
 
     // Delete old + insert new
     console.log(`     → Upserting to Supabase...`)
@@ -363,7 +378,7 @@ async function main() {
 }
 
 main().catch(err => {
-  // Runtime errors from third-party services (OpenAI quota, Supabase outage,
+  // Runtime errors from third-party services (Gemini quota, Supabase outage,
   // network hiccups) must NOT block the web deploy. Config errors throw early
   // (before main() runs) so by this point we're past validation and any error
   // is operational — log it loudly and exit 0 so the rest of the build
