@@ -1,16 +1,15 @@
-# Security Policy for santifer.io
+# Security Policy
 # https://securitytxt.org/ — RFC 9116
 
-Contact: mailto:hi@santifer.io
-Preferred-Languages: en, es
-Canonical: https://santifer.io/.well-known/security.txt
-Expires: 2027-02-19T00:00:00.000Z
+Contact: mailto:taher2152@gmail.com
+Preferred-Languages: en
+Expires: 2027-08-06T00:00:00.000Z
+
+# TODO: add Canonical: line once there's a real domain
 
 # Security measures implemented:
-# - Content Security Policy (CSP) headers
-# - Input sanitization on chat API
-# - Prompt injection defense (6-layer: keyword detection, canary tokens, fingerprinting, anti-extraction, online safety scoring, adversarial red team)
-# - Rate limiting on API endpoints
-# - No user data stored — stateless chat sessions
-# - 71 automated evals including security/jailbreak tests
-# - Weekly adversarial testing with auto-generated attack vectors
+# - Content Security Policy (CSP), HSTS, and standard security headers (see vercel.json)
+# - No user data collected — static content site (no active forms, chatbot, or accounts in the current build)
+#
+# An AI chatbot with additional prompt-injection defenses is planned for a later phase;
+# this file will be updated with those measures once it ships.

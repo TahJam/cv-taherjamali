@@ -1,24 +1,21 @@
 /* TEAM */
-Builder: Santiago Fernandez de Valderrama Aparicio
-Role: Head of Applied AI · AI Product Manager · Solutions Architect
-Contact: hi@santifer.io
-Site: https://santifer.io
-Location: Seville, Spain
-LinkedIn: https://linkedin.com/in/santifer
-GitHub: https://github.com/santifer
+Builder: Taher Jamali
+Role: Software Engineer — Machine Learning & Platform Security
+Contact: taher2152@gmail.com
+Location: Austin, TX
+LinkedIn: https://linkedin.com/in/taher-jamali
+GitHub: https://github.com/TahJam
 
 /* THANKS */
 AI Pair: Claude Code (Anthropic)
 
 /* SITE */
 Stack: React 19, TypeScript, Vite, Tailwind CSS, Motion
-AI: Claude API (claude-sonnet-4-6), streaming via Vercel Edge
-Quality: 71 evals, 6-layer security, Langfuse observability, closed-loop quality
 Hosting: Vercel
 Standards: llms.txt, security.txt, JSON-LD, Open Graph
 
 /* CRAFT */
-Performance: Lighthouse 100, pre-rendered SSR, critical CSS inlining
-Security: CSP, input sanitization, prompt injection defense, rate limiting
-Accessibility: Semantic HTML, ARIA labels, keyboard navigation
-SEO: Programmatic meta tags, structured data, sitemap, hreflang
+Performance: Vite build, self-hosted fonts, code-split bundles
+Security: CSP, HSTS, and standard security headers (see vercel.json)
+Accessibility: Semantic HTML, keyboard-navigable
+SEO: Structured data (JSON-LD), Open Graph, Twitter Cards

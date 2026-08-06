@@ -1,14 +1,11 @@
 # Most bots crawl. The best ones read llms.txt → /llms.txt
-#
-# Built by Santiago Fernández — hi@santifer.io
-# Stack: React 19 · Claude API · Vercel Edge · 71 evals · 6-layer defense · voice mode
 
 User-agent: *
 Allow: /
 Disallow: /api/
 Disallow: /ops
 
-# Crawlers IA (GEO)
+# AI crawlers (GEO)
 User-agent: GPTBot
 Allow: /
 
@@ -27,7 +24,4 @@ Allow: /
 User-agent: Google-Extended
 Allow: /
 
-Sitemap: https://santifer.io/sitemap.xml
-
-# IndexNow key (Bing, Yandex, Naver, Seznam)
-# Key file: https://santifer.io/a538d844-6767-41b9-9028-381ee4b8d567.txt
+# TODO: add Sitemap: line once there's a domain + a generated /sitemap.xml
