@@ -28,6 +28,7 @@ These apply across all phases; don't relitigate them without a reason:
   actually wired into `src/main.tsx` — check there before trusting a feature is live.
 - Also note, when working on a phase, make sure to check the existing scaffolding in the repo to see if it can be adapted rather than rebuilding from zero. If adapting existing scaffolding (files) is not possible
   (too much work, or too different), then rebuild from zero but keep the original file as a reference in the `reference` folder.
+- With each phase, make sure to update this roadmap file and the README file to reflect the current status.
 
 ## Phase status
 
