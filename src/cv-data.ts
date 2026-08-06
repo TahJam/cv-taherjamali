@@ -1,9 +1,9 @@
 /**
  * Structured CV content — single source of truth for the homepage.
  *
- * Employer/internal-system detail is intentionally generalized (no internal
- * tool names, ticket numbers, or platform-vendor names) — see project memory
- * "goal-fork-cv-santiago" for why.
+ * Employer (Apple) and public platform/product names (SAP BTP, Cloud Foundry)
+ * are named directly. Internal tool names and ticket/PR numbers are not — see
+ * project memory "goal-fork-cv-santiago" for the exact line.
  */
 
 export const PROFILE = {
@@ -68,13 +68,13 @@ export interface ExperienceEntry {
 
 export const EXPERIENCE: ExperienceEntry[] = [
   {
-    company: 'Enterprise Cloud Platform Team, Fortune 500 Technology Company',
+    company: 'Siri Info Solutions, Client: Apple — SAP Business Technology Platform (BTP) Team',
     role: 'Software Engineer — Platform Security, Infrastructure & AI/ML',
     period: '2024 – Present',
     bullets: [
       'Designed and built an autonomous multi-agent AI penetration-testing system (Python, Claude, Gemini) that discovers and tests production applications end-to-end — blackbox and whitebox — reaching 95% single-pass accuracy on a 24-case benchmark, and used the benchmark to decide which model to route to security-critical vs. high-volume scanning.',
       'Root-caused a production bug that caused up to 68x redundant scheduled work per application; replaced the compensating retry logic with a durable, structurally-enforced queue that eliminated the failure class instead of papering over it.',
-      'Designed and shipped a full-stack operator dashboard (React, Express, SQLite) that replaced CLI-only tooling for a fleet-wide security scanning platform covering 100+ internal applications across multiple regions.',
+      'Designed and shipped a full-stack operator dashboard (React, Express, SQLite) that replaced CLI-only tooling for a fleet-wide Cloud Foundry security scanning platform covering 100+ internal applications across multiple regions.',
       'Built a source-code-aware AI scanning pipeline that re-verifies its own findings against live traffic before surfacing them, cutting false-positive security alerts and the operator time spent chasing them.',
       'Automated disaster-recovery failover across two AWS regions (DNS/GSLB-based), including a standalone desktop app so on-call engineers can execute failover without CLI access mid-outage.',
     ],

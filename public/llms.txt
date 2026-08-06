@@ -8,11 +8,11 @@ I turn manual pentesting into systems that watch themselves. I build AI agents a
 
 ## Current Role
 
-Software Engineer — Platform Security, Infrastructure & AI/ML, on the enterprise cloud platform team of a Fortune 500 technology company (2024–present). Highlights:
+Software Engineer — Platform Security, Infrastructure & AI/ML, on Apple's SAP Business Technology Platform (BTP) team (2024–present). Highlights:
 
 - Designed and built an autonomous multi-agent AI penetration-testing system (Python, Claude, Gemini) that discovers and tests production applications end-to-end — blackbox and whitebox — reaching 95% single-pass accuracy on a 24-case benchmark.
 - Root-caused a production bug causing up to 68x redundant scheduled work per application; replaced compensating retry logic with a durable, structurally-enforced queue that eliminated the failure class.
-- Designed and shipped a full-stack operator dashboard (React, Express, SQLite) replacing CLI-only tooling for a fleet-wide security scanning platform covering 100+ internal applications.
+- Designed and shipped a full-stack operator dashboard (React, Express, SQLite) replacing CLI-only tooling for a fleet-wide Cloud Foundry security scanning platform covering 100+ internal applications.
 - Built a source-code-aware AI scanning pipeline that re-verifies its own findings against live traffic before surfacing them, cutting false-positive security alerts.
 - Automated disaster-recovery failover across two AWS regions (DNS/GSLB-based), including a standalone desktop app so on-call engineers can execute failover without CLI access mid-outage.
 
