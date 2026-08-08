@@ -45,6 +45,20 @@ export default async function handler(req) {
     return new Response('Method not allowed', { status: 405 })
   }
 
+  // Only cv-ui's own proxy should be able to reach this — see
+  // docs/adr/002-chat-service-isolation.md. Vercel has no private networking
+  // between separately deployed projects, so this is an application-level
+  // boundary, not a network-level one: reject anything without the shared
+  // secret before doing any real work (no Anthropic/RAG calls for free).
+  const authHeader = req.headers.get('authorization')
+  const expected = `Bearer ${process.env.CHAT_SERVICE_SECRET}`
+  if (!process.env.CHAT_SERVICE_SECRET || authHeader !== expected) {
+    return new Response(JSON.stringify({ error: 'Unauthorized' }), {
+      status: 401,
+      headers: { 'Content-Type': 'application/json' },
+    })
+  }
+
   const langfuse = getLangfuse()
   let trace = null
 
