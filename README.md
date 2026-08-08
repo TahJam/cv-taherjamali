@@ -42,6 +42,9 @@ Santiago for the original; still the rationale for what's kept).
 
 ## Quick Start
 
+This is an npm workspaces monorepo — two physically separate services (`cv-ui/`, `cv-chat-service/`), one
+`npm install` from the root sets up both.
+
 ```bash
 git clone https://github.com/TahJam/cv-taherjamali.git
 cd cv-taherjamali
@@ -49,35 +52,49 @@ npm install
 npm run dev
 ```
 
-Open [localhost:5173](http://localhost:5173). The homepage itself needs no environment variables. The chat
-widget (`api/chat.js`, Phase 2) needs `ANTHROPIC_API_KEY`, `GOOGLE_API_KEY`, `SUPABASE_URL`,
-`SUPABASE_SERVICE_ROLE_KEY` — see `.env.local.example`. `LANGFUSE_*`/`RESEND_API_KEY` are optional (tracing
-and jailbreak alerts; the chat pipeline degrades gracefully without them). Note `npm run dev` is plain Vite —
-it does not run the `api/*.js` Edge functions locally (no Vercel CLI installed); see `CLAUDE.md` for how to
-exercise the chat handler directly instead.
+`npm run dev` uses `concurrently` to run both services together with colored, prefixed logs (`[UI]`/`[CHAT]`)
+— Vite for `cv-ui` on [localhost:5173](http://localhost:5173), and a small local adapter for
+`cv-chat-service` on `:8787` (there's no Vercel CLI installed, so this stands in for `vercel dev`; see
+`CLAUDE.md` for how it works). The UI's dev server proxies `/api/*` straight to the adapter, so the chat
+widget works out of the box once both are running.
+
+`cv-ui` needs no environment variables. `cv-chat-service` needs `ANTHROPIC_API_KEY`, `GOOGLE_API_KEY`,
+`SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, and `CHAT_SERVICE_SECRET` — see
+`cv-chat-service/.env.local.example`. `cv-ui` needs `CHAT_SERVICE_URL` and the same `CHAT_SERVICE_SECRET` —
+see `cv-ui/.env.local.example`. `LANGFUSE_*`/`RESEND_API_KEY` are optional (tracing and jailbreak alerts; the
+chat pipeline degrades gracefully without them).
 
 ---
 
 ## Project Structure
 
+An npm workspaces monorepo — two physically separate deployable services, isolated on purpose (see
+[`docs/adr/002-chat-service-isolation.md`](docs/adr/002-chat-service-isolation.md)). Repo root is orchestration
+and shared docs only, no app code.
+
 ```
-src/
-├── App.tsx              # The entire homepage — hero, experience, projects, education, skills, contact
-├── cv-data.ts            # Single source of truth for homepage content — edit here, not App.tsx
-├── GlobalNav.tsx          # Theme toggle (minimal — no multi-page nav yet)
-├── main.tsx               # Routes: / (App), /ops (dormant dashboard), catch-all 404
-├── articles/
-│   └── registry.ts        # Case-study registry — emptied of Santiago's articles, type shape kept for mine
-│
-├── FloatingChat.tsx        # Live chat widget — TJ persona, text-only (Phase 2)
-├── useVoiceMode.ts, VoiceOrb.tsx    # Dormant voice-mode UI — Phase 4
-└── ops/                              # Dormant LLMOps dashboard — Phase 4
+package.json                     # root: npm workspaces + concurrently orchestrator ("npm run dev" from here)
 
-api/
-├── chat.js, _shared/rag.js, _shared/prompt.js    # Live chatbot + RAG pipeline — Phase 2
-└── ops/                                           # Dormant dashboard API layer — Phase 4
+cv-ui/                           # Vercel Project 1 — the site
+├── src/
+│   ├── App.tsx                  # The entire homepage — hero, experience, projects, education, skills, contact
+│   ├── cv-data.ts                # Single source of truth for homepage content — edit here, not App.tsx
+│   ├── GlobalNav.tsx              # Theme toggle (minimal — no multi-page nav yet)
+│   ├── main.tsx                   # Routes: / (App), /ops (dormant dashboard), catch-all 404
+│   ├── FloatingChat.tsx            # Live chat widget — TJ persona, text-only
+│   ├── articles/registry.ts        # Case-study registry — emptied of Santiago's, type shape kept for mine
+│   ├── useVoiceMode.ts, VoiceOrb.tsx    # Dormant voice-mode UI — Phase 5
+│   └── ops/                              # Dormant LLMOps dashboard frontend — Phase 5
+├── api/chat.js                    # Thin proxy only — forwards to cv-chat-service with the shared secret
+└── vite.config.ts                  # Dev-only /api/* proxy to the local chat-service adapter
 
-evals/, tests/ops-*.test.ts    # Dormant eval suite (71 cases, asserts facts about Santiago) — Phase 3
+cv-chat-service/                 # Vercel Project 2 — everything AI/chat
+├── api/
+│   ├── chat.js, _shared/rag.js, _shared/prompt.js    # Live chatbot + RAG pipeline
+│   └── ops/, voice-*.js, cron/                         # Dormant — Phase 4/5, moved here since same concern
+├── chatbot-prompt.txt              # TJ's system prompt
+├── scripts/                         # RAG content pipeline (export-chunks, ingest-rag) + dev-server.mjs adapter
+└── evals/, tests/ops-*.test.ts       # Dormant eval suite (71 cases, asserts facts about Santiago) — Phase 4
 
 docs/
 ├── adr/                  # Architecture decision records
