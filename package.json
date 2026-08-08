@@ -1,64 +1,16 @@
 {
-  "name": "taher-jamali-cv",
+  "name": "cv-taherjamali",
   "private": true,
-  "version": "0.0.0",
-  "type": "module",
+  "workspaces": [
+    "cv-ui",
+    "cv-chat-service"
+  ],
   "scripts": {
-    "dev": "vite",
-    "rag:export": "npx tsx --tsconfig tsconfig.app.json scripts/export-chunks.ts",
-    "rag:ingest": "npx tsx --tsconfig tsconfig.app.json scripts/ingest-rag.ts",
-    "rag:sync": "npm run rag:export && npm run rag:ingest",
-    "build": "npm run rag:sync && tsc -b && vite build",
-    "validate-llms-txt": "npx tsx --tsconfig tsconfig.app.json scripts/validate-llms-txt.ts",
-    "validate-articles": "npx tsx --tsconfig tsconfig.app.json scripts/validate-articles.ts",
-    "validate-articles:fix": "npx tsx --tsconfig tsconfig.app.json scripts/validate-articles.ts --fix",
-    "lint": "eslint .",
-    "preview": "vite preview",
-    "evals": "npx tsx evals/runner.ts",
-    "evaluate-traces": "npx tsx scripts/evaluate-traces.ts",
-    "prompt:sync": "npx tsx scripts/sync-prompt-to-langfuse.ts",
-    "prompt:regression": "npx tsx scripts/prompt-regression.ts",
-    "adversarial": "npx tsx scripts/adversarial-test.ts",
-    "chats": "npx tsx scripts/chats.ts",
-    "chats:tui": "npx tsx scripts/chats-tui.ts",
-    "test:contract": "npx tsx tests/ops-contract.test.ts",
-    "test:ops": "npx tsx tests/ops-dashboard.test.ts",
-    "diagnose:rag": "npx tsx scripts/diagnose-rag.ts"
-  },
-  "dependencies": {
-    "@anthropic-ai/sdk": "^0.71.2",
-    "@supabase/supabase-js": "^2.99.1",
-    "@vercel/analytics": "^1.6.1",
-    "@vercel/functions": "^3.3.6",
-    "langfuse": "^3.38.6",
-    "lucide-react": "^0.563.0",
-    "motion": "^12.29.0",
-    "react": "^19.2.0",
-    "react-dom": "^19.2.0",
-    "react-markdown": "^10.1.0",
-    "react-router-dom": "^7.12.0",
-    "recharts": "^3.8.0",
-    "resend": "^6.9.1"
+    "dev": "concurrently -n UI,CHAT -c blue,magenta \"npm run dev --workspace=cv-ui\" \"npm run dev --workspace=cv-chat-service\"",
+    "build": "npm run build --workspace=cv-ui",
+    "lint": "npm run lint --workspace=cv-ui"
   },
   "devDependencies": {
-    "@eslint/js": "^9.39.1",
-    "@tailwindcss/vite": "^4.1.18",
-    "@types/node": "^24.10.1",
-    "@types/react": "^19.2.5",
-    "@types/react-dom": "^19.2.3",
-    "@vitejs/plugin-react": "^5.1.1",
-    "@vitejs/plugin-react-swc": "^4.2.3",
-    "critters": "^0.0.23",
-    "dotenv": "^17.2.3",
-    "eslint": "^9.39.1",
-    "eslint-plugin-react-hooks": "^7.0.1",
-    "eslint-plugin-react-refresh": "^0.4.24",
-    "globals": "^16.5.0",
-    "playwright": "^1.61.1",
-    "simple-icons": "^16.11.0",
-    "tailwindcss": "^4.1.18",
-    "typescript": "~5.9.3",
-    "typescript-eslint": "^8.46.4",
-    "vite": "^7.2.4"
+    "concurrently": "^10.0.4"
   }
 }

@@ -8,16 +8,25 @@
  * Output: scripts/chunks/{source}.json
  *
  * Usage:
- *   npx tsx --tsconfig tsconfig.app.json scripts/export-chunks.ts
+ *   npx tsx --tsconfig tsconfig.json scripts/export-chunks.ts
+ *
+ * Reads two things from the cv-ui workspace (../../cv-ui/): the article
+ * registry's type/shape and public/llms.txt. This is intentional, one-way,
+ * dev-time-only coupling — this script isn't part of the deployed runtime
+ * (api/chat.js never imports it), it's a content-sync tool that only runs
+ * when you're manually re-indexing RAG content, same trust boundary as
+ * running it on your own machine. It reads UI content; the UI never reads
+ * anything from here. See docs/adr/002-chat-service-isolation.md.
  */
 
 import { writeFileSync, mkdirSync, readFileSync } from 'node:fs'
 import { resolve, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { articleRegistry } from '../src/articles/registry.ts'
+import { articleRegistry } from '../../cv-ui/src/articles/registry.ts'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const root = resolve(__dirname, '..')
+const uiRoot = resolve(root, '../cv-ui')
 const CHUNKS_DIR = resolve(root, 'scripts/chunks')
 
 // ---------------------------------------------------------------------------
@@ -307,10 +316,13 @@ async function main() {
   let totalChunks = 0
 
   // Source 1: llms.txt (bootstrapped content — no case-study articles exist
-  // yet, per docs/plans/phase-2-chatbot-rag.md's staged content decision)
-  const llmsTxtPath = resolve(root, 'public/llms.txt')
+  // yet, per docs/plans/phase-2-chatbot-rag.md's staged content decision).
+  // Read from cv-ui/public/ — that's its canonical home (it's served to
+  // crawlers from there); see the file-header comment for why this
+  // cross-workspace read is intentional.
+  const llmsTxtPath = resolve(uiRoot, 'public/llms.txt')
   const llmsTxtContent = readFileSync(llmsTxtPath, 'utf-8')
-  const llmsChunks = parseMarkdown(llmsTxtContent, 'home', 'public/llms.txt', LLMS_TXT_SECTION_ANCHORS)
+  const llmsChunks = parseMarkdown(llmsTxtContent, 'home', '../cv-ui/public/llms.txt', LLMS_TXT_SECTION_ANCHORS)
   if (llmsChunks.length > 0) {
     writeFileSync(resolve(CHUNKS_DIR, 'home.json'), JSON.stringify(llmsChunks, null, 2))
     console.log(`  ✓ home (llms.txt) → ${llmsChunks.length} chunks`)

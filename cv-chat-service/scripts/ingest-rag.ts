@@ -14,7 +14,11 @@
  *   ANTHROPIC_API_KEY (optional, for contextual retrieval)
  *
  * Usage:
- *   npx tsx --tsconfig tsconfig.app.json scripts/ingest-rag.ts
+ *   npx tsx --tsconfig tsconfig.json scripts/ingest-rag.ts
+ *
+ * Reads the article registry's type/shape from ../../cv-ui/ — see
+ * export-chunks.ts's file header for why this cross-workspace read is
+ * intentional (dev-time-only, not part of the deployed runtime).
  */
 
 import { config } from 'dotenv'
@@ -27,7 +31,7 @@ import { fileURLToPath } from 'node:url'
 import { createHash } from 'node:crypto'
 import { createClient } from '@supabase/supabase-js'
 import Anthropic from '@anthropic-ai/sdk'
-import { articleRegistry } from '../src/articles/registry.ts'
+import { articleRegistry } from '../../cv-ui/src/articles/registry.ts'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const root = resolve(__dirname, '..')
