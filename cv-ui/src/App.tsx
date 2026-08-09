@@ -403,7 +403,7 @@ export default function App() {
 
         <div className="relative max-w-5xl mx-auto px-6 pt-20 pb-16 md:pt-32 md:pb-20">
           <div className="flex flex-col md:flex-row items-center gap-8 md:gap-12">
-            {/* Avatar — monogram placeholder until a real headshot is wired in */}
+            {/* Avatar */}
             <motion.div
               initial={hydrated ? { opacity: 0, scale: 0.8 } : false}
               animate={{ opacity: 1, scale: 1 }}
@@ -414,8 +414,17 @@ export default function App() {
                 <div className="absolute inset-0 rounded-full bg-gradient-theme-30 blur-xl" />
                 <div className="absolute inset-0 rounded-full bg-gradient-to-br from-white/20 to-white/5 md:backdrop-blur-sm border border-white/20 shadow-2xl" />
                 <div className="absolute inset-2 rounded-full bg-gradient-theme-50 p-[2px]">
-                  <div className="w-full h-full rounded-full overflow-hidden bg-card flex items-center justify-center">
-                    <span className="font-display text-5xl md:text-6xl font-bold text-gradient-theme">TJ</span>
+                  <div className="w-full h-full rounded-full overflow-hidden bg-card">
+                    <picture>
+                      {/* <source srcSet="/headshot.webp" type="image/webp" /> */}
+                      <img
+                        src="/headshot.png"
+                        alt={PROFILE.name}
+                        className="w-full h-full object-cover"
+                        width={480}
+                        height={480}
+                      />
+                    </picture>
                   </div>
                 </div>
               </div>
