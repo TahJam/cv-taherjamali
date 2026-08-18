@@ -91,10 +91,10 @@ cv-ui/                           # Vercel Project 1 — the site
 cv-chat-service/                 # Vercel Project 2 — everything AI/chat
 ├── api/
 │   ├── chat.js, _shared/rag.js, _shared/prompt.js    # Live chatbot + RAG pipeline
-│   └── ops/, voice-*.js, cron/                         # Dormant — Phase 4/5, moved here since same concern
+│   └── ops/, voice-*.js, cron/                         # Dormant — Phase 5, moved here since same concern
 ├── chatbot-prompt.txt              # TJ's system prompt
 ├── scripts/                         # RAG content pipeline (export-chunks, ingest-rag) + dev-server.mjs adapter
-└── evals/, tests/ops-*.test.ts       # Dormant eval suite (71 cases, asserts facts about Santiago) — Phase 4
+└── evals/                            # 50 active tests across 8 categories, rewritten for Taher/TJ — Phase 4
 
 docs/
 ├── adr/                  # Architecture decision records

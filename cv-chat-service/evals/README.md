@@ -1,136 +1,138 @@
-# Evals Suite - Chatbot "Santi"
+# Evals Suite — TJ Chatbot
 
-Suite de evaluaciones profesionales para el chatbot de CV que habla como Santiago.
+Automated eval suite for TJ, the chatbot that represents Taher Jamali on his CV site.
 
-## Qué son los Evals
+## What evals are
 
-Los **evals** son tests sistemáticos para medir la calidad de un sistema de IA:
+**Evals** are systematic tests that measure the quality of an AI system:
 
-- **Accuracy** - ¿Responde con información correcta?
-- **Persona adherence** - ¿Mantiene el personaje?
-- **Safety** - ¿Rechaza lo que debe rechazar?
-- **Quality** - ¿Las respuestas son útiles y concisas?
+- **Accuracy** — Does it answer with correct information?
+- **Persona adherence** — Does it stay in character?
+- **Safety** — Does it decline what it should decline?
+- **Quality** — Are responses useful and concise?
 
-## Categorías de Tests
+## Test categories
 
-| Categoría | Tests | Target |
-|-----------|-------|--------|
-| `factual_accuracy` | 7 | 100% |
-| `persona_adherence` | 4 | 95%+ |
-| `boundary_testing` | 5 | 100% |
-| `language_handling` | 5 | 100% |
-| `response_quality` | 5 | 90%+ |
-| `safety_jailbreak` | 5 | 100% |
+| Category | File | Tests |
+|---|---|---|
+| `factual_accuracy` | `factual.json` | 9 |
+| `persona_adherence` | `persona.json` | 4 |
+| `boundary_testing` | `boundaries.json` | 7 |
+| `response_quality` | `quality.json` | 7 |
+| `safety_jailbreak` | `safety.json` | 7 |
+| `multi_turn` | `multi-turn.json` | 5 |
+| `rag_quality` | `rag.json` | 8 |
+| `source_badges` | `source-badges.json` | 3 |
 
-## Cómo Ejecutar
+50 active test cases. `rag.json`/`source-badges.json` are intentionally reduced-scope — they test
+single-source (`llms.txt`, `article_id: "home"`) retrieval quality rather than multi-article
+disambiguation, since no case-study articles exist yet (`ARTICLE_KEYWORDS`/`ARTICLE_ROUTES` in
+`api/_shared/rag.js` are still empty). Full per-article coverage returns once real case studies are written —
+see `docs/plans/phase-4-evals-defense.md`.
 
-**Opción 1: Local con Vercel Dev** (recomendado para desarrollo)
+`voice.json` (6 tests) also lives in `datasets/` but is **deferred, untouched, and expected to fail/error**
+right now — it exercises `/api/rag-search`, which isn't wired into the local dev adapter's route table
+(`scripts/dev-server.mjs` only serves `/api/chat` today). It targets voice mode, which is dormant and about to
+change architecture entirely (OpenAI Realtime → Google Live API) in Phase 5. Don't treat its failures as a
+regression — leave it alone until that phase starts.
+
+## How to run
+
+First, copy `.env.example` to `.env.local` and fill in `CHAT_SERVICE_SECRET` (same value as
+`cv-chat-service/.env.local`) and `ANTHROPIC_API_KEY` — `runner.ts` loads `evals/.env.local` automatically.
+
+**Local (recommended for development):**
 ```bash
-# Terminal 1: Iniciar servidor con edge functions
-vercel dev
+# Terminal 1: start the chat service's local dev adapter
+npm run dev --workspace=cv-chat-service   # serves cv-chat-service on :8787
 
-# Terminal 2: Ejecutar evals
-npm run evals
+# Terminal 2: run the evals
+npm run evals --workspace=cv-chat-service
 ```
 
-**Opción 2: Contra producción** (para validar el deploy)
+**Against a deployed cv-chat-service** (to validate a real deploy):
 ```bash
-CHAT_API_URL=https://santifer.io/api/chat npm run evals
+CHAT_API_URL=https://your-chat-service.vercel.app/api/chat \
+CHAT_SERVICE_SECRET=<the deployed CHAT_SERVICE_SECRET> \
+npm run evals --workspace=cv-chat-service
 ```
 
-> **Nota:** `npm run dev` (Vite) no sirve las edge functions de `/api/chat`. Usa `vercel dev` para desarrollo local.
+> **Note:** plain `npm run dev` from the repo root (Vite) does not serve `/api/chat` on its own — it proxies to
+> the adapter above. There is no Vercel CLI installed, so `vercel dev` isn't an option here; see
+> `docs/plans/phase-3-service-split.md` for why the dev adapter exists.
 
-## Estructura
+## Directory structure
 
 ```
 evals/
-├── README.md           # Esta documentación
-├── datasets/           # Tests en formato JSON
-│   ├── factual.json    # Precisión factual
-│   ├── persona.json    # Consistencia de personaje
-│   ├── boundaries.json # Tests de límites
-│   ├── languages.json  # Comportamiento bilingüe
-│   ├── quality.json    # Calidad de respuestas
-│   └── safety.json     # Seguridad y jailbreaks
-├── assertions.ts       # Funciones de assertion
-├── llm-judge.ts        # Evaluador con Haiku
-├── runner.ts           # Script principal
-└── results/            # Reportes generados
+├── README.md            # this file
+├── .env.example          # copy to .env.local — CHAT_SERVICE_SECRET + ANTHROPIC_API_KEY
+├── datasets/              # tests, one JSON file per category
+│   ├── factual.json, persona.json, boundaries.json, quality.json, safety.json, multi-turn.json
+│   ├── rag.json, source-badges.json   # reduced scope, see above
+│   └── voice.json                      # deferred to Phase 5, untouched
+├── assertions.ts           # deterministic assertion functions
+├── llm-judge.ts             # Claude Haiku subjective evaluator
+├── runner.ts                 # main runner script
+└── results/                   # generated reports (gitignored)
 ```
 
-## Tipos de Assertions
+## Assertion types
 
-### Deterministas (90% de tests)
+### Deterministic (most tests)
 
-| Tipo | Descripción |
-|------|-------------|
-| `contains` | Contiene texto exacto |
-| `contains_any` | Contiene al menos uno de los valores |
-| `not_contains` | NO contiene el texto |
-| `max_words` | Máximo N palabras |
-| `min_words` | Mínimo N palabras |
-| `regex` | Match de patrón regex |
-| `language` | Detecta idioma (ES/EN) |
+| Type | Description |
+|---|---|
+| `contains` | Contains exact text |
+| `contains_any` | Contains at least one of the given values |
+| `not_contains` | Does NOT contain the text |
+| `max_words` | At most N words |
+| `min_words` | At least N words |
+| `regex` | Matches a regex pattern |
+| `rag_used` / `rag_not_used` | RAG search was (or wasn't) triggered |
+| `source_includes` / `source_not_includes` | A specific `article_id` is (or isn't) among the RAG sources |
 
-### Con LLM Judge (10% de tests)
+### LLM judge (subjective tests)
 
-| Tipo | Descripción |
-|------|-------------|
-| `llm_judge` | Haiku evalúa según criterio subjetivo |
+| Type | Description |
+|---|---|
+| `llm_judge` | Claude Haiku evaluates against a subjective criterion |
 
-## Formato de Dataset
+## Dataset format
 
 ```json
 {
-  "name": "categoria_nombre",
-  "description": "Descripción de qué evalúa",
+  "name": "category_name",
+  "description": "What this dataset evaluates",
   "tests": [
     {
       "id": "test-id",
-      "description": "Qué verifica este test",
-      "input": "Pregunta al chatbot",
-      "lang": "es",
+      "description": "What this test checks",
+      "input": "Question to ask the chatbot",
       "assertions": [
-        { "type": "contains", "value": "texto esperado" },
-        { "type": "llm_judge", "criteria": "criterio subjetivo" }
-      ]
+        { "type": "contains", "value": "expected text" },
+        { "type": "llm_judge", "criteria": "subjective criterion" }
+      ],
+      "conversation": "optional — prior turns for multi-turn tests"
     }
   ]
 }
 ```
 
-## Reporte de Resultados
+## Results
 
-Después de cada ejecución se genera un reporte en `results/report-YYYY-MM-DD.md` con:
+Each run generates a report at `results/report-YYYY-MM-DD.md` with:
 
-- Resumen general
-- Pass rate por categoría
-- Detalle de cada test con input, response y assertions
+- Overall summary and pass rate
+- Pass rate per category
+- Per-test detail: input, response, and each assertion's result
 
-## Variables de Entorno
+## Environment variables
 
-| Variable | Default | Descripción |
-|----------|---------|-------------|
-| `CHAT_API_URL` | `http://localhost:3000/api/chat` | URL del API del chat |
-| `ANTHROPIC_API_KEY` | (requerido para LLM judge) | API key de Anthropic |
+| Variable | Default | Description |
+|---|---|---|
+| `CHAT_API_URL` | `http://localhost:8787/api/chat` | Chat API URL to test against |
+| `CHAT_SERVICE_SECRET` | (required) | Must match `cv-chat-service`'s shared secret — the API rejects unauthenticated requests since the Phase 3 service split |
+| `ANTHROPIC_API_KEY` | (required for LLM judge) | Anthropic API key |
 
-### Configurar API Key (para LLM Judge)
-
-```bash
-# Copia el ejemplo y añade tu key
-cp evals/.env.example evals/.env.local
-
-# Edita el archivo con tu key real
-# El archivo .env.local está en .gitignore (no se sube a GitHub)
-```
-
-**Nota:** Sin `ANTHROPIC_API_KEY`, el test `tone-quality` fallará. Los demás 30 tests (deterministas) funcionan sin esta variable.
-
-## Valor para el CV
-
-Esta suite demuestra competencias en:
-
-- **AI Product Discovery** - Definición de métricas de calidad
-- **LLMOps Foundations** - Testing sistemático de LLMs
-- **Reliability & Ops** - Garantía de calidad en producción
-- **Forward-Deployed Delivery** - Soluciones completas y medibles
+Copy `.env.example` to `.env.local` and fill in real values (gitignored, never pushed to GitHub).

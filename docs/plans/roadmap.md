@@ -46,7 +46,7 @@ These apply across all phases; don't relitigate them without a reason:
 | 1 | Foundation & Branding | ✅ Done |
 | 2 | Text Chatbot + RAG | ✅ Done |
 | 3 | Service Split — Isolate the Chat/AI Backend | ✅ Done |
-| 4 | Evals + Prompt-Injection Defense | Not started |
+| 4 | Evals + Prompt-Injection Defense | ✅ Done |
 | 5 | Voice Mode + `/ops` LLMOps Dashboard | Not started |
 
 ---
@@ -185,21 +185,44 @@ Full investigate/plan/test/implement writeup: **[`docs/plans/phase-3-service-spl
 
 ---
 
-## Phase 4 — Evals + Prompt-Injection Defense
+## Phase 4 — Evals + Prompt-Injection Defense ✅ Done
 
 **Goal:** the quality/safety layer that backs up the chatbot — automated eval suite + the 6-layer
 prompt-injection defense described in the original README, both currently asserting facts about Santiago.
 
-**Existing scaffolding (dormant):** `evals/` (71-case suite, deterministic + LLM-as-judge),
-`tests/ops-contract.test.ts`, `tests/ops-dashboard.test.ts`. The injection-defense layers live inside
-`api/chat.js`/`api/_shared/rag.js` and are already active (Phase 2) — this phase is really about building the
-eval dataset that proves the chatbot works correctly for my content, now against wherever Phase 3 relocated it.
+Full investigate/plan/test/implement writeup: **[`docs/plans/phase-4-evals-defense.md`](phase-4-evals-defense.md)**.
 
-**Rough scope (detail goes in `phase-4-evals-defense.md` when this starts):**
-- New eval dataset asserting facts about me, not Santiago.
-- Verify/tune the 6-layer injection defense against my persona and content.
-- Re-add the evals step to CI/build once the dataset is real.
-- Update the evals to use Google Gemini models and remove OpenAI models.
+**Scope:**
+- The 6-layer injection defense (keywords, canary, fingerprint, anti-extraction, online scoring, adversarial)
+  was already active from Phase 2 and mostly persona-agnostic; verified the fingerprint list still matches
+  the current `chatbot-prompt.txt`, and rewrote the two layers whose prompts still described Santiago
+  (`evaluate-traces.ts`'s `EVALUATOR_PROMPT`, `adversarial-test.ts`'s attack-generation persona).
+- Rewrote the eval suite for Taher/TJ in English: `factual.json` (9, down from 11 — dropped 2 tests about a
+  Santiago project with no equivalent), `persona.json` (4), `boundaries.json` (7, with a new
+  `competitor-opinion` test replacing an Apple-vs-Samsung phone-repair one that didn't map), `quality.json`
+  (7), `safety.json` (7), `multi-turn.json` (5, built from real experience/projects). Reduced and rewrote
+  `rag.json` (16 → 8) and `source-badges.json` (5 → 3) to test single-source (`llms.txt`, `article_id:
+  "home"`) retrieval quality instead of multi-article disambiguation — validated in Test stage that every
+  real RAG response currently returns exactly one possible `article_id`, confirming there's nothing to
+  disambiguate yet (no case-study articles, `ARTICLE_KEYWORDS`/`ARTICLE_ROUTES` still empty). Deleted the
+  bilingual `languages.json` dataset and the dead `language` assertion type/`lang` field throughout the
+  harness. Left `voice.json` (6 tests) untouched, deferred to Phase 5 — it targets a dormant endpoint not
+  routed in the local dev adapter and about to change architecture (OpenAI Realtime → Google Live API).
+- Fixed a real bug found during investigation: `runner.ts`, `adversarial-test.ts`, and `prompt-regression.ts`
+  all still defaulted to the pre-split `localhost:3000` and sent no `Authorization` header, so they 401'd
+  against the real post-Phase-3 chat service. Also fixed a stale, inconsistent judge model id in
+  `evaluate-traces.ts` and translated `llm-judge.ts`'s judge prompt template (was hardcoded in Spanish,
+  independent of whatever criteria it's given — a Test-stage finding) to English.
+- Ran the full suite for real against the live local service, not a dry run: first pass caught 3 real
+  `response_quality` test-authoring bugs (assertions penalizing behavior the prompt actually asks for, like
+  citing metrics, or requiring exact redirect phrasing the prompt explicitly says to vary) — fixed by reading
+  the actual failing responses before concluding they were test bugs, not chatbot defects. Final result:
+  **50/50 non-deferred tests passing**, `voice_quality` 0/6 as expected/documented.
+- No CI pipeline exists in this repo yet, so "re-add evals to CI" stays out of scope — `npm run evals` remains
+  a manually-run step, same as `rag:sync`.
+- `llm-judge.ts` already used Claude Haiku, not OpenAI — no model swap needed there. The only OpenAI usage
+  left in `cv-chat-service` is the voice-mode API (`api/voice-token.js`, `api/voice-trace.js`), the Phase 5
+  OpenAI→Google Live API swap, not a Phase 4 item.
 
 **Depends on:** Phase 2 (nothing to eval or defend until the chatbot exists) and Phase 3 (evals should target
 the chat service's final location, not get built against a layout that's about to move).
@@ -212,10 +235,12 @@ the chat service's final location, not get built against a layout that's about t
 production (conversations, costs, RAG, security, evals, voice, prompts, system health).
 
 **Existing scaffolding (dormant):** `src/useVoiceMode.ts`, `src/VoiceOrb.tsx`, `src/useAudioAnalyser.ts`,
-`src/ops/`, `api/ops/`. The dashboard reads from Langfuse + Supabase — both accounts already exist (set up in
-Phase 2 for RAG) — but the dashboard itself is still unwired; currently routed at `/ops` but unlinked from the
-UI and non functional. Per the service-architecture decision, both land in the Chat/AI service (Phase 3), not
-the UI.
+`src/ops/`, `api/ops/`, `tests/ops-contract.test.ts`, `tests/ops-dashboard.test.ts` (validate the `/api/ops/*`
+endpoint contract and dashboard API — reclassified here from Phase 4 during that phase's investigation, since
+they test the dashboard, not the chatbot/evals). The dashboard reads from Langfuse + Supabase — both accounts
+already exist (set up in Phase 2 for RAG) — but the dashboard itself is still unwired; currently routed at
+`/ops` but unlinked from the UI and non functional. Per the service-architecture decision, both land in the
+Chat/AI service (Phase 3), not the UI.
 
 **Rough scope (detail goes in `phase-5-voice-ops.md` when this starts):**
 - Wire voice mode into `FloatingChat.tsx`.
