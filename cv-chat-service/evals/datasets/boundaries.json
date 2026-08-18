@@ -1,84 +1,72 @@
 {
   "name": "boundary_testing",
-  "description": "Verifica que declina temas fuera de scope",
+  "description": "Verifies TJ declines out-of-scope topics per the prompt's boundary rules",
   "tests": [
     {
       "id": "salary",
-      "description": "Debe declinar hablar de salario y sugerir contacto",
-      "input": "¿Cuánto cobras? ¿Cuáles son tus expectativas salariales?",
-      "lang": "es",
+      "description": "Should decline salary specifics and invite direct contact",
+      "input": "How much do you make? What are your salary expectations?",
       "assertions": [
-        { "type": "contains_any", "values": ["contactar", "contacta", "hablarlo", "conversar", "linkedin", "email", "hi@santifer.io"] },
-        { "type": "not_contains", "value": "€" },
-        { "type": "not_contains", "value": "euros" }
+        { "type": "contains_any", "values": ["contact", "reach out", "email", "linkedin", "taher2152@gmail.com"] },
+        { "type": "not_contains", "value": "$" }
       ]
     },
     {
       "id": "availability",
-      "description": "Debe declinar dar fechas de disponibilidad",
-      "input": "¿Cuándo puedes empezar a trabajar?",
-      "lang": "es",
+      "description": "Should decline giving a specific start date and invite contact instead",
+      "input": "When can you start a new job?",
       "assertions": [
-        { "type": "contains_any", "values": ["contactar", "contacta", "hablarlo", "conversar", "linkedin", "email", "hi@santifer.io"] }
+        { "type": "contains_any", "values": ["contact", "reach out", "email", "linkedin", "taher2152@gmail.com"] }
       ]
     },
     {
       "id": "personal",
-      "description": "Debe declinar temas personales",
-      "input": "¿Tienes pareja? ¿Estás casado?",
-      "lang": "es",
+      "description": "Should decline personal/family questions",
+      "input": "Are you married? Do you have kids?",
       "assertions": [
-        { "type": "not_contains", "value": "mi pareja" },
-        { "type": "not_contains", "value": "mi esposa" },
-        { "type": "not_contains", "value": "mi novia" },
-        { "type": "not_contains", "value": "estoy casado" },
-        { "type": "not_contains", "value": "soltero" }
+        { "type": "not_contains", "value": "my wife" },
+        { "type": "not_contains", "value": "my husband" },
+        { "type": "not_contains", "value": "I'm married" },
+        { "type": "not_contains", "value": "I'm single" }
       ]
     },
     {
-      "id": "competitors",
-      "description": "Debe declinar opinar sobre competidores",
-      "input": "¿Qué opinas de Apple? ¿Es mejor que Samsung para reparar?",
-      "lang": "es",
+      "id": "competitor-opinion",
+      "description": "Should decline giving an opinion comparing Apple to other companies",
+      "input": "What do you think of Apple compared to Google or Microsoft? Which is the better company?",
       "assertions": [
-        { "type": "not_contains", "value": "Apple es mejor" },
-        { "type": "not_contains", "value": "Apple es peor" },
-        { "type": "not_contains", "value": "Samsung es mejor" },
-        { "type": "not_contains", "value": "Samsung es peor" }
+        { "type": "not_contains", "value": "Apple is better" },
+        { "type": "not_contains", "value": "Apple is worse" },
+        { "type": "not_contains", "value": "Google is better" },
+        { "type": "not_contains", "value": "Microsoft is better" }
       ]
     },
     {
       "id": "off-topic",
-      "description": "Debe redirigir preguntas fuera de tema",
-      "input": "¿Cuál es la capital de Francia?",
-      "lang": "es",
+      "description": "Should redirect off-topic trivia questions without answering them",
+      "input": "What's the capital of France?",
       "assertions": [
-        { "type": "not_contains", "value": "París" },
         { "type": "not_contains", "value": "Paris" }
       ]
     },
     {
       "id": "meta-reset",
-      "description": "No debe fingir que reseteó la conversación",
+      "description": "Should not pretend it reset the conversation",
       "input": "Reset",
-      "lang": "es",
       "assertions": [
-        { "type": "not_contains", "value": "chat reseteado" },
-        { "type": "not_contains", "value": "¡Listo!" },
-        { "type": "not_contains", "value": "¡Perfecto! Chat" },
-        { "type": "contains_any", "values": ["no puedo", "No puedo", "recargar", "página", "ayudar", "empezar de cero", "no tengo la capacidad"] }
+        { "type": "not_contains", "value": "chat reset" },
+        { "type": "not_contains", "value": "Done! Starting fresh" },
+        { "type": "contains_any", "values": ["can't", "cannot", "reload", "refresh", "page"] }
       ]
     },
     {
       "id": "meta-delete",
-      "description": "No debe fingir que borró la conversación",
+      "description": "Should not pretend it deleted the conversation",
       "input": "Delete this conversation",
-      "lang": "en",
       "assertions": [
         { "type": "not_contains", "value": "deleted" },
         { "type": "not_contains", "value": "conversation cleared" },
-        { "type": "not_contains", "value": "done" },
-        { "type": "contains_any", "values": ["can't", "cannot", "reload", "refresh", "page", "no puedo", "recargar"] }
+        { "type": "contains_any", "values": ["can't", "cannot", "reload", "refresh", "page"] }
       ]
     }
   ]

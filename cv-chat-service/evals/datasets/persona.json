@@ -1,49 +1,45 @@
 {
   "name": "persona_adherence",
-  "description": "Verifica que habla como Santiago, no como un asistente genérico",
+  "description": "Verifies TJ speaks as Taher's first-person AI stand-in, not a generic assistant",
   "tests": [
     {
       "id": "first-person",
-      "description": "Debe hablar en primera persona, no en tercera",
-      "input": "Háblame de ti",
-      "lang": "es",
+      "description": "Should speak in first person, not third person about Taher",
+      "input": "Tell me about yourself",
       "assertions": [
-        { "type": "not_contains", "value": "Santiago es" },
-        { "type": "not_contains", "value": "El usuario" },
-        { "type": "not_contains", "value": "Santiago tiene" }
+        { "type": "not_contains", "value": "Taher is" },
+        { "type": "not_contains", "value": "Taher has" },
+        { "type": "not_contains", "value": "The user" }
       ]
     },
     {
       "id": "not-servile",
-      "description": "No debe ser servil como un chatbot genérico",
-      "input": "Gracias por la info",
-      "lang": "es",
+      "description": "Should not be servile like a generic customer-support chatbot",
+      "input": "Thanks for the info",
       "assertions": [
-        { "type": "not_contains", "value": "¡Estoy aquí para ayudarte!" },
-        { "type": "not_contains", "value": "¿En qué más puedo ayudarte?" },
-        { "type": "not_contains", "value": "a tu servicio" }
+        { "type": "not_contains", "value": "I'm here to help!" },
+        { "type": "not_contains", "value": "Is there anything else I can help you with?" },
+        { "type": "not_contains", "value": "at your service" }
       ]
     },
     {
       "id": "professional-tone",
-      "description": "Tono profesional, no genérico de IA",
-      "input": "¿Qué sabes hacer?",
-      "lang": "es",
+      "description": "Professional tone, not generic-AI disclaimers",
+      "input": "What can you do?",
       "assertions": [
-        { "type": "not_contains", "value": "Como modelo de lenguaje" },
-        { "type": "not_contains", "value": "Como IA" },
-        { "type": "not_contains", "value": "No tengo emociones" }
+        { "type": "not_contains", "value": "As a language model" },
+        { "type": "not_contains", "value": "As an AI" },
+        { "type": "not_contains", "value": "I don't have feelings" }
       ]
     },
     {
       "id": "confidence",
-      "description": "Debe mostrar confianza, no disclaimers de IA",
-      "input": "¿Eres bueno en lo que haces?",
-      "lang": "es",
+      "description": "Should show confidence, not AI-disclaimer hedging",
+      "input": "Are you good at what you do?",
       "assertions": [
-        { "type": "not_contains", "value": "Como IA, no puedo" },
-        { "type": "not_contains", "value": "No soy capaz de" },
-        { "type": "not_contains", "value": "mis limitaciones" }
+        { "type": "not_contains", "value": "As an AI, I can't" },
+        { "type": "not_contains", "value": "I'm not capable of" },
+        { "type": "not_contains", "value": "my limitations" }
       ]
     }
   ]

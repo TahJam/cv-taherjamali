@@ -1,21 +1,19 @@
 {
   "name": "response_quality",
-  "description": "Verifica que las respuestas son útiles y concisas",
+  "description": "Verifies responses are useful, concise, and well-formatted",
   "tests": [
     {
       "id": "conciseness",
-      "description": "Respuestas deben ser <= 200 palabras (target 150, margen para variabilidad LLM)",
-      "input": "Cuéntame absolutamente todo sobre ti, toda tu experiencia, proyectos, habilidades, formación y certificaciones",
-      "lang": "es",
+      "description": "Responses must stay under 200 words (target 150, margin for LLM variability)",
+      "input": "Tell me absolutely everything about you — all your experience, projects, skills, and education",
       "assertions": [
         { "type": "max_words", "value": 200 }
       ]
     },
     {
       "id": "no-bullet-lists",
-      "description": "No debe usar listas markdown con - o 1.",
-      "input": "¿Cuáles son tus principales logros?",
-      "lang": "es",
+      "description": "Should not use markdown lists with - or 1.",
+      "input": "What are your main achievements?",
       "assertions": [
         { "type": "regex", "pattern": "^(?!.*^\\s*[-*]\\s)", "flags": "m" },
         { "type": "regex", "pattern": "^(?!.*^\\s*\\d+\\.\\s)", "flags": "m" }
@@ -23,54 +21,49 @@
     },
     {
       "id": "metrics-included",
-      "description": "Debe incluir métricas concretas al hablar de logros",
-      "input": "¿Qué lograste en tu empresa?",
-      "lang": "es",
+      "description": "Should include concrete metrics when discussing achievements",
+      "input": "What have you shipped at your current job?",
       "assertions": [
         { "type": "regex", "pattern": "\\d+", "flags": "" }
       ]
     },
     {
       "id": "min-substance",
-      "description": "Respuestas no deben ser demasiado cortas",
-      "input": "¿Cuál es tu experiencia con IA?",
-      "lang": "es",
+      "description": "Responses should not be too short",
+      "input": "What's your experience with AI security?",
       "assertions": [
         { "type": "min_words", "value": 20 }
       ]
     },
     {
       "id": "tone-quality",
-      "description": "El tono debe ser profesional pero cercano, no robótico",
-      "input": "¿Por qué debería contratarte?",
-      "lang": "es",
+      "description": "Tone should be professional but approachable, not robotic or hype-laden",
+      "input": "Why should a hiring manager be interested in you?",
       "assertions": [
-        { "type": "llm_judge", "criteria": "El tono es profesional pero cercano, transmite confianza sin ser arrogante, y se siente auténtico (no como un chatbot genérico)" }
+        { "type": "llm_judge", "criteria": "The tone is professional but approachable and feels like a real engineer describing their own work, not a generic chatbot. Citing concrete metrics (percentages, multipliers, benchmark sizes) is EXPECTED and GOOD here — that is this persona's explicit house style ('let the numbers speak'), not a sign of self-promotion. Only fail this if the response uses hype adjectives about itself (e.g. 'brilliant', 'amazing', 'impressive', 'innovative') or generic corporate-speak (e.g. 'drive value', 'leverage synergies') — plain metrics and direct claims about what was built do not count against it." }
       ]
     },
     {
       "id": "response-variation",
-      "description": "La segunda respuesta a la misma pregunta debe variar",
-      "input": "¿Cuál es tu experiencia con IA?",
-      "lang": "es",
+      "description": "A second answer to the same question should add new detail or framing, not just repeat the prior answer verbatim",
+      "input": "What's your experience with AI?",
       "conversation": [
-        { "role": "user", "content": "¿Cuál es tu experiencia con IA?" },
-        { "role": "assistant", "content": "Llevo años construyendo con IA en producción. En Santifer iRepair creé a Jacobo, un agente omnicanal (voz + WhatsApp) que resolvía el 90% de consultas sin intervención humana. Orquestaba sub-agentes especializados con tool calling y HITL handoff. También construí Custom GPTs con OpenAPI para consultas de stock por voz. Ahora con este portfolio aplico LLMOps real: Langfuse, 31 evals automatizados, prompt caching. ¿Quieres que profundice en algún proyecto concreto?" },
-        { "role": "user", "content": "¿Cuál es tu experiencia con IA?" }
+        { "role": "user", "content": "What's your experience with AI?" },
+        { "role": "assistant", "content": "I build AI agents that hold up in production. My main project is an autonomous multi-agent system that pentests cloud applications end-to-end, hitting 95% single-pass accuracy on a 24-case benchmark. I also built a source-code-aware scanning pipeline that re-verifies its own findings before surfacing them. Want to go deeper on the architecture?" },
+        { "role": "user", "content": "What's your experience with AI?" }
       ],
       "assertions": [
-        { "type": "llm_judge", "criteria": "La respuesta aporta información nueva o un ángulo diferente sobre la experiencia con IA, no repite exactamente los mismos puntos (Jacobo, 90%, tool calling) de la respuesta anterior que se incluye en el contexto de conversación" }
+        { "type": "llm_judge", "criteria": "The response is not a near-verbatim repeat of the previous assistant message. It's fine if it covers the same underlying projects (the bot has a fixed, limited set of facts to draw from) — pass it as long as it adds at least one concrete new detail, specific, or framing not present in the previous message (e.g. a new technical specific, a different example, a different opening or structure). Only fail if it reads as essentially the same sentences restated with no new specifics at all." }
       ]
     },
     {
       "id": "generic-question-depth",
-      "description": "Ante pregunta genérica, debe dar respuesta concreta y sugerir profundizar",
-      "input": "Cuéntame algo",
-      "lang": "es",
+      "description": "A generic question should get a concrete answer with an invitation to go deeper",
+      "input": "Tell me something",
       "assertions": [
         { "type": "min_words", "value": 20 },
         { "type": "regex", "pattern": "\\d+", "flags": "" },
-        { "type": "contains_any", "values": ["profundizar", "saber más", "interesa", "contarte", "preguntar", "aspecto", "detalle", "gustas", "quieres", "pregunta", "¿"] }
+        { "type": "llm_judge", "criteria": "The response ends with some form of invitation for the user to ask for more detail or steer the conversation — this can be phrased many different ways (a question about what they're curious about, an offer to go deeper on a specific point, etc.) and does not need to match any specific wording" }
       ]
     }
   ]

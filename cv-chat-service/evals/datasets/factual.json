@@ -1,216 +1,84 @@
 {
   "name": "factual_accuracy",
-  "description": "Verifica que Santi responde con datos correctos del CV",
+  "description": "Verifies TJ answers with correct facts from Taher's CV",
   "tests": [
     {
-      "id": "exp-years",
-      "description": "Debe mencionar años de experiencia significativos o fecha de inicio",
-      "input": "¿Cuántos años de experiencia tienes?",
-      "lang": "es",
+      "id": "current-role",
+      "description": "Should mention Apple and SAP BTP when asked about current role",
+      "input": "Where do you currently work?",
       "assertions": [
-        {
-          "type": "contains_any",
-          "values": [
-            "16",
-            "15",
-            "2009",
-            "2007"
-          ]
-        },
-        {
-          "type": "not_contains",
-          "value": "no sé"
-        }
-      ]
-    },
-    {
-      "id": "agent-name",
-      "description": "Debe mencionar el nombre del agente AI: Jacobo",
-      "input": "¿Cómo se llama tu agente de IA?",
-      "lang": "es",
-      "assertions": [
-        {
-          "type": "contains",
-          "value": "Jacobo"
-        }
-      ]
-    },
-    {
-      "id": "location",
-      "description": "Debe mencionar Sevilla",
-      "input": "¿Dónde estás basado?",
-      "lang": "es",
-      "assertions": [
-        {
-          "type": "contains",
-          "value": "Sevilla"
-        }
-      ]
-    },
-    {
-      "id": "exit-2025",
-      "description": "Debe mencionar la venta en 2025",
-      "input": "¿Vendiste tu empresa?",
-      "lang": "es",
-      "assertions": [
-        {
-          "type": "contains",
-          "value": "2025"
-        },
-        {
-          "type": "contains_any",
-          "values": [
-            "vendí",
-            "venta",
-            "going concern",
-            "funcionamiento"
-          ]
-        }
-      ]
-    },
-    {
-      "id": "repairs-count",
-      "description": "Debe mencionar +30,000 reparaciones",
-      "input": "¿Cuántas reparaciones hicisteis en total?",
-      "lang": "es",
-      "assertions": [
-        {
-          "type": "contains_any",
-          "values": [
-            "30.000",
-            "30,000",
-            "30000",
-            "treinta mil"
-          ]
-        }
-      ]
-    },
-    {
-      "id": "automation-hours",
-      "description": "Debe mencionar 170+ horas automatizadas/mes",
-      "input": "¿Cuántas horas automatizaste al mes?",
-      "lang": "es",
-      "assertions": [
-        {
-          "type": "contains_any",
-          "values": [
-            "170",
-            "ciento setenta"
-          ]
-        }
-      ]
-    },
-    {
-      "id": "target-roles",
-      "description": "Debe mencionar roles de interés",
-      "input": "¿Qué roles te interesan?",
-      "lang": "es",
-      "assertions": [
-        {
-          "type": "contains_any",
-          "values": [
-            "Product Manager",
-            "Solutions Architect",
-            "Forward Deployed",
-            "FDE"
-          ]
-        }
-      ]
-    },
-    {
-      "id": "repo-public",
-      "description": "Debe confirmar que el repo de santifer.io es público en GitHub",
-      "input": "¿El código de santifer.io está en GitHub?",
-      "lang": "es",
-      "assertions": [
-        {
-          "type": "contains_any",
-          "values": [
-            "público",
-            "publica",
-            "open",
-            "GitHub"
-          ]
-        },
-        {
-          "type": "contains_any",
-          "values": [
-            "santifer",
-            "cv-santiago"
-          ]
-        },
-        {
-          "type": "not_contains",
-          "value": "privado"
-        }
+        { "type": "contains", "value": "Apple" },
+        { "type": "contains_any", "values": ["SAP BTP", "Business Technology Platform"] }
       ]
     },
     {
       "id": "model-version",
-      "description": "Debe decir Claude Sonnet 4.5, no 3.5 Sonnet",
-      "input": "¿Qué modelo de IA usas?",
-      "lang": "es",
+      "description": "Should say Claude Sonnet 4.6, never an older version",
+      "input": "What AI model powers you?",
       "assertions": [
-        {
-          "type": "contains_any",
-          "values": [
-            "Sonnet 4.5",
-            "sonnet-4-5",
-            "Claude Sonnet 4"
-          ]
-        },
-        {
-          "type": "not_contains",
-          "value": "3.5 Sonnet"
-        },
-        {
-          "type": "not_contains",
-          "value": "Sonnet 3.5"
-        }
+        { "type": "contains_any", "values": ["Sonnet 4.6", "sonnet-4-6", "Claude Sonnet 4"] },
+        { "type": "not_contains", "value": "Sonnet 3.5" },
+        { "type": "not_contains", "value": "3.5 Sonnet" }
       ]
     },
     {
-      "id": "canon-global-no-formula",
-      "description": "Canon de entidad: el Global es juicio holistico sin formula aritmetica. Las negativas van por llm_judge, no por not_contains: el bot PUEDE decir 'no weighted average' (negacion correcta) o usar 'weighted' para el modo ofertas.",
-      "input": "How does career-ops score a job offer? Explain the rubric and the Global score.",
-      "lang": "en",
+      "id": "location",
+      "description": "Should mention Austin, TX when asked where based",
+      "input": "Where are you based?",
       "assertions": [
-        {
-          "type": "regex",
-          "pattern": "holistic|holístico",
-          "flags": "i"
-        },
-        {
-          "type": "regex",
-          "pattern": "not a formula|no arithmetic|no formula|sin fórmula|no existe fórmula",
-          "flags": "i"
-        },
-        {
-          "type": "regex",
-          "pattern": "five[- ]dimension|cinco dimensiones",
-          "flags": "i"
-        },
-        {
-          "type": "llm_judge",
-          "criteria": "La respuesta deja claro que el Global del modo de evaluacion individual NO se calcula con una formula aritmetica ni con una media ponderada. Si menciona 'weighted' o 'average', debe ser SOLO para negarlo ('no weighted average') o para referirse explicitamente al modo distinto de comparacion multi-oferta. NO debe implicar en ningun momento que el Global sea reproducible con un calculo. Ademas: el score Global debe expresarse como numero en escala 1.0-5.0, NUNCA como letra ni rango de letras; si aparece un rango de letras (A-F, A-G, A-H) debe referirse a SECCIONES del informe de evaluacion, nunca a la escala del score."
-        }
+        { "type": "contains", "value": "Austin" }
       ]
     },
     {
-      "id": "canon-multi-offer-weighted-ok",
-      "description": "Anti-sobrecorreccion: la matriz ponderada del modo ofertas es real y no debe negarse; debe nombrar el modo o la comparacion",
-      "input": "If I want to compare several job offers side by side with career-ops, how does that mode work?",
-      "lang": "en",
+      "id": "pentest-accuracy",
+      "description": "Should cite the 95% single-pass accuracy figure for the pentesting agent",
+      "input": "How accurate is the autonomous pentesting system you built?",
       "assertions": [
-        {
-          "type": "regex",
-          "pattern": "compar|matri|ofertas",
-          "flags": "i"
-        },
-        {
-          "type": "llm_judge",
-          "criteria": "La respuesta describe el modo de comparacion multi-oferta como una matriz de dimensiones con pesos explicitos (weighted es correcto aqui) y NO niega que existan pesos en ese modo. Debe identificar que se trata del modo de comparacion, no del de evaluacion individual."
-        }
+        { "type": "contains", "value": "95%" }
+      ]
+    },
+    {
+      "id": "prior-role",
+      "description": "Should mention Chirality Research and the Data Scientist role",
+      "input": "What did you do before your current job?",
+      "assertions": [
+        { "type": "contains_any", "values": ["Chirality", "Data Scientist"] }
+      ]
+    },
+    {
+      "id": "education",
+      "description": "Should mention UC Davis and Computer Science",
+      "input": "Where did you go to school?",
+      "assertions": [
+        { "type": "contains", "value": "UC Davis" },
+        { "type": "contains_any", "values": ["Computer Science", "computer science"] }
+      ]
+    },
+    {
+      "id": "repo-public",
+      "description": "Should confirm this site's source code is public on GitHub",
+      "input": "Is the code for this site public?",
+      "assertions": [
+        { "type": "contains_any", "values": ["public", "open", "GitHub"] },
+        { "type": "not_contains", "value": "private" }
+      ]
+    },
+    {
+      "id": "voice-mode",
+      "description": "Should say text-only for now, never claim voice mode exists",
+      "input": "Can I talk to you with voice instead of typing?",
+      "assertions": [
+        { "type": "contains_any", "values": ["text", "text-only", "typing"] },
+        { "type": "not_contains", "value": "yes, you can talk" }
+      ]
+    },
+    {
+      "id": "reliability-fix",
+      "description": "Should mention the durable queue fix and the 68x redundant-work figure",
+      "input": "Tell me about a reliability bug you fixed.",
+      "assertions": [
+        { "type": "contains", "value": "68x" },
+        { "type": "contains_any", "values": ["durable queue", "queue"] }
       ]
     }
   ]

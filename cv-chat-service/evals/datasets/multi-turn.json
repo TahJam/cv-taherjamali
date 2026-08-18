@@ -4,78 +4,72 @@
   "tests": [
     {
       "id": "multi-context-retention",
-      "description": "Bot retains context from previous turn (Jacobo details)",
-      "input": "¿Qué modelo de IA usa?",
-      "lang": "es",
+      "description": "Bot retains context from the previous turn (pentesting agent accuracy)",
+      "input": "What accuracy did it hit?",
       "conversation": [
-        { "role": "user", "content": "Háblame del agente Jacobo" },
-        { "role": "assistant", "content": "Jacobo es mi agente de IA omnicanal para atención al cliente. Funciona vía WhatsApp y web, con sub-agentes especializados que manejan presupuestos, citas y pedidos usando tool calling." },
-        { "role": "user", "content": "¿Qué modelo de IA usa?" }
+        { "role": "user", "content": "Tell me about the autonomous pentesting agent you built" },
+        { "role": "assistant", "content": "I built an autonomous multi-agent AI system in Python that discovers and tests production applications end-to-end, both blackbox and whitebox, orchestrating Claude and Gemini." },
+        { "role": "user", "content": "What accuracy did it hit?" }
       ],
       "assertions": [
-        { "type": "contains_any", "values": ["claude", "sonnet", "haiku", "gpt", "modelo", "model", "llm"] }
+        { "type": "contains", "value": "95%" }
       ]
     },
     {
       "id": "multi-topic-switch",
-      "description": "Bot handles topic switch from Jacobo to Business OS",
-      "input": "Y el Business OS, ¿qué es?",
-      "lang": "es",
+      "description": "Bot handles a topic switch from the pentesting agent to the RAG Agent project",
+      "input": "What about your RAG Agent project — what's that?",
       "conversation": [
-        { "role": "user", "content": "¿Qué es Jacobo?" },
-        { "role": "assistant", "content": "Jacobo es mi agente de IA omnicanal para atención al cliente. Lo construí para Santifer iRepair." },
-        { "role": "user", "content": "Y el Business OS, ¿qué es?" }
+        { "role": "user", "content": "What is the pentesting agent?" },
+        { "role": "assistant", "content": "It's an autonomous multi-agent system I built at Apple that discovers and tests production applications end-to-end, hitting 95% single-pass accuracy on a 24-case benchmark." },
+        { "role": "user", "content": "What about your RAG Agent project — what's that?" }
       ],
       "assertions": [
-        { "type": "contains_any", "values": ["business os", "erp", "airtable", "operativo", "sistema"] },
-        { "type": "not_contains", "value": "jacobo" }
+        { "type": "contains_any", "values": ["LangChain", "RAG", "LangGraph"] },
+        { "type": "not_contains", "value": "95%" }
       ]
     },
     {
       "id": "multi-drilldown",
       "description": "Bot provides deeper detail on progressive drill-down",
-      "input": "¿Cómo funciona exactamente el pipeline de SEO?",
-      "lang": "es",
+      "input": "How exactly does it decide which model to route findings to?",
       "conversation": [
-        { "role": "user", "content": "¿Qué proyectos has hecho?" },
-        { "role": "assistant", "content": "He construido varios sistemas: un agente IA llamado Jacobo, un Business OS con 12 bases en Airtable, una web programática con SEO automatizado, y este portfolio con chatbot y RAG." },
-        { "role": "user", "content": "Cuéntame más del SEO programático" },
-        { "role": "assistant", "content": "Construí una arquitectura de SEO programático para generar páginas indexables automáticamente usando un decision engine que evalúa volumen de búsqueda y competencia." },
-        { "role": "user", "content": "¿Cómo funciona exactamente el pipeline de SEO?" }
+        { "role": "user", "content": "What have you built?" },
+        { "role": "assistant", "content": "A few systems: an autonomous pentesting agent, a durable-queue reliability fix, an operator dashboard for a fleet-wide security scanner, and a RAG-backed portfolio chatbot — this one." },
+        { "role": "user", "content": "Tell me more about the pentesting agent" },
+        { "role": "assistant", "content": "It discovers and tests production applications end-to-end, blackbox and whitebox, hitting 95% single-pass accuracy on a 24-case benchmark. I used that benchmark to decide which model to route findings to." },
+        { "role": "user", "content": "How exactly does it decide which model to route findings to?" }
       ],
       "assertions": [
-        { "type": "rag_used" },
         { "type": "min_words", "value": 20 }
       ]
     },
     {
       "id": "multi-no-repeat",
       "description": "Bot doesn't repeat the same formulation across turns",
-      "input": "¿Y qué más puedes contarme?",
-      "lang": "es",
+      "input": "Anything else you can tell me about it?",
       "conversation": [
-        { "role": "user", "content": "¿Qué experiencia tienes con IA?" },
-        { "role": "assistant", "content": "Llevo más de 2 años construyendo sistemas de IA en producción. Desde Jacobo, un agente omnicanal, hasta pipelines de RAG y evals automatizados." },
-        { "role": "user", "content": "¿Y qué más puedes contarme?" }
+        { "role": "user", "content": "Tell me about the reliability bug you fixed" },
+        { "role": "assistant", "content": "I root-caused a bug causing up to 68x redundant scheduled work per application, and replaced the retry-loop workaround with a durable, structurally-enforced queue that eliminated the failure class." },
+        { "role": "user", "content": "Anything else you can tell me about it?" }
       ],
       "assertions": [
-        { "type": "llm_judge", "criteria": "The response should provide NEW information not already mentioned in the previous assistant message. It should NOT simply restate the same points about Jacobo being omnichannel or mentioning RAG/evals in the same way." }
+        { "type": "llm_judge", "criteria": "The response should provide NEW information not already mentioned in the previous assistant message. It should NOT simply restate the same points (68x redundant work, durable queue) in the same way." }
       ]
     },
     {
       "id": "multi-return-topic",
-      "description": "Bot returns to previous topic correctly",
-      "input": "Volviendo a Jacobo, ¿cuántos clientes atiende?",
-      "lang": "es",
+      "description": "Bot returns to a previous topic correctly after a detour",
+      "input": "Going back to the pentesting agent — how many test cases were in that benchmark?",
       "conversation": [
-        { "role": "user", "content": "Háblame de Jacobo" },
-        { "role": "assistant", "content": "Jacobo es mi agente de IA omnicanal para atención al cliente, funciona vía WhatsApp y web." },
-        { "role": "user", "content": "¿Qué stack usas?" },
-        { "role": "assistant", "content": "Mi stack principal es React, TypeScript, Vite, Tailwind, y para IA uso Claude de Anthropic con RAG sobre Supabase." },
-        { "role": "user", "content": "Volviendo a Jacobo, ¿cuántos clientes atiende?" }
+        { "role": "user", "content": "Tell me about the pentesting agent" },
+        { "role": "assistant", "content": "It's an autonomous multi-agent system that discovers and tests production applications end-to-end, blackbox and whitebox, hitting 95% single-pass accuracy." },
+        { "role": "user", "content": "What's your tech stack in general?" },
+        { "role": "assistant", "content": "Mostly Python and React, with Claude and Gemini for the AI side, and AWS/Kubernetes for infrastructure." },
+        { "role": "user", "content": "Going back to the pentesting agent — how many test cases were in that benchmark?" }
       ],
       "assertions": [
-        { "type": "contains_any", "values": ["jacobo", "agente", "autoservicio", "self-service", "90%", "cliente"] }
+        { "type": "contains", "value": "24" }
       ]
     }
   ]
