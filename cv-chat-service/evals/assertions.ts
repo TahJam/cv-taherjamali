@@ -1,12 +1,11 @@
 /**
- * Funciones de assertion deterministas para evals
+ * Deterministic assertion functions for evals
  */
 
 export interface Assertion {
   type: string
   value?: string | number
   values?: string[]
-  expected?: string
   pattern?: string
   flags?: string
   criteria?: string
@@ -19,28 +18,28 @@ export interface AssertionResult {
 }
 
 /**
- * Verifica que la respuesta contiene un texto exacto (case insensitive)
+ * Checks that the response contains an exact text (case insensitive)
  */
 export function assertContains(response: string, value: string): boolean {
   return response.toLowerCase().includes(value.toLowerCase())
 }
 
 /**
- * Verifica que la respuesta contiene al menos uno de los valores (case insensitive)
+ * Checks that the response contains at least one of the values (case insensitive)
  */
 export function assertContainsAny(response: string, values: string[]): boolean {
   return values.some((v) => response.toLowerCase().includes(v.toLowerCase()))
 }
 
 /**
- * Verifica que la respuesta NO contiene un texto (case insensitive)
+ * Checks that the response does NOT contain a text (case insensitive)
  */
 export function assertNotContains(response: string, value: string): boolean {
   return !response.toLowerCase().includes(value.toLowerCase())
 }
 
 /**
- * Verifica que la respuesta tiene como máximo N palabras
+ * Checks that the response has at most N words
  */
 export function assertMaxWords(response: string, maxWords: number): boolean {
   const wordCount = response.trim().split(/\s+/).length
@@ -48,7 +47,7 @@ export function assertMaxWords(response: string, maxWords: number): boolean {
 }
 
 /**
- * Verifica que la respuesta tiene al menos N palabras
+ * Checks that the response has at least N words
  */
 export function assertMinWords(response: string, minWords: number): boolean {
   const wordCount = response.trim().split(/\s+/).length
@@ -56,7 +55,7 @@ export function assertMinWords(response: string, minWords: number): boolean {
 }
 
 /**
- * Verifica que la respuesta cumple con un patrón regex
+ * Checks that the response matches a regex pattern
  */
 export function assertRegex(
   response: string,
@@ -73,84 +72,7 @@ export function assertRegex(
 }
 
 /**
- * Detecta el idioma de la respuesta (heurística simple)
- * Busca palabras comunes en español vs inglés
- */
-export function assertLanguage(response: string, expected: 'es' | 'en'): boolean {
-  const spanishWords = [
-    'el',
-    'la',
-    'los',
-    'las',
-    'de',
-    'en',
-    'que',
-    'es',
-    'un',
-    'una',
-    'mi',
-    'con',
-    'para',
-    'por',
-    'del',
-    'al',
-    'como',
-    'más',
-    'pero',
-    'su',
-    'sus',
-    'este',
-    'esta',
-    'estos',
-    'estas',
-    'he',
-    'ha',
-    'años',
-  ]
-  const englishWords = [
-    'the',
-    'is',
-    'are',
-    'was',
-    'were',
-    'have',
-    'has',
-    'had',
-    'my',
-    'your',
-    'with',
-    'for',
-    'and',
-    'but',
-    'or',
-    'from',
-    'this',
-    'that',
-    'these',
-    "i'm",
-    "i've",
-    'years',
-  ]
-
-  const words = response.toLowerCase().split(/\s+/)
-
-  let spanishCount = 0
-  let englishCount = 0
-
-  for (const word of words) {
-    if (spanishWords.includes(word)) spanishCount++
-    if (englishWords.includes(word)) englishCount++
-  }
-
-  if (expected === 'es') {
-    return spanishCount > englishCount
-  } else {
-    return englishCount > spanishCount
-  }
-}
-
-/**
- * Ejecuta una assertion y devuelve el resultado
+ * Runs an assertion and returns the result
  */
 export function runAssertion(
   response: string,
@@ -209,13 +131,6 @@ export function runAssertion(
         : `Does not match pattern /${assertion.pattern}/`
       break
 
-    case 'language':
-      passed = assertLanguage(response, assertion.expected as 'es' | 'en')
-      reason = passed
-        ? `Language detected as ${assertion.expected}`
-        : `Language is not ${assertion.expected}`
-      break
-
     case 'rag_used':
       passed = (ragSources?.length ?? 0) > 0
       reason = passed
@@ -245,8 +160,8 @@ export function runAssertion(
       break
 
     case 'llm_judge':
-      // LLM judge se maneja en llm-judge.ts
-      passed = true // Placeholder, se sobrescribe
+      // LLM judge is handled in llm-judge.ts
+      passed = true // Placeholder, overwritten by the caller
       reason = 'LLM judge evaluation pending'
       break
 

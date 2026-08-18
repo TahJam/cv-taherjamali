@@ -17,11 +17,16 @@ import * as fs from 'fs'
 import * as path from 'path'
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY! })
-const CHAT_API_URL = process.env.CHAT_API_URL || 'http://localhost:3000/api/chat'
+const CHAT_API_URL = process.env.CHAT_API_URL || 'http://localhost:8787/api/chat'
 const PROMPT_REGRESSION_SECRET = process.env.PROMPT_REGRESSION_SECRET
+const CHAT_SERVICE_SECRET = process.env.CHAT_SERVICE_SECRET
 
 if (!PROMPT_REGRESSION_SECRET) {
   console.error('❌ Missing PROMPT_REGRESSION_SECRET env var')
+  process.exit(1)
+}
+if (!CHAT_SERVICE_SECRET) {
+  console.error('❌ Missing CHAT_SERVICE_SECRET env var — cv-chat-service/api/chat.js rejects unauthenticated requests since the Phase 3 service split.')
   process.exit(1)
 }
 
@@ -29,7 +34,6 @@ interface Assertion {
   type: string
   value?: string | number
   values?: string[]
-  expected?: string
   pattern?: string
   flags?: string
   criteria?: string
@@ -39,7 +43,6 @@ interface Test {
   id: string
   description: string
   input: string
-  lang: 'es' | 'en'
   assertions: Assertion[]
 }
 
@@ -55,9 +58,10 @@ interface VersionResult {
   failedAssertions: string[]
 }
 
-async function callChatWithVersion(input: string, lang: string, version: string): Promise<string> {
+async function callChatWithVersion(input: string, version: string): Promise<string> {
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
+    'Authorization': `Bearer ${CHAT_SERVICE_SECRET}`,
   }
 
   if (version !== 'production') {
@@ -68,10 +72,7 @@ async function callChatWithVersion(input: string, lang: string, version: string)
   const response = await fetch(CHAT_API_URL, {
     method: 'POST',
     headers,
-    body: JSON.stringify({
-      messages: [{ role: 'user', content: input }],
-      lang,
-    }),
+    body: JSON.stringify({ messages: [{ role: 'user', content: input }] }),
   })
 
   if (!response.ok) throw new Error(`Chat API error: ${response.status}`)
@@ -118,7 +119,6 @@ function simpleAssertionCheck(response: string, assertion: Assertion): boolean {
       return response.trim().split(/\s+/).length >= (assertion.value as number)
     case 'regex':
       return new RegExp(assertion.pattern!, assertion.flags).test(response)
-    case 'language':
     case 'rag_used':
     case 'rag_not_used':
     case 'source_includes':
@@ -136,7 +136,7 @@ async function compareResponses(v1Response: string, v2Response: string, testInpu
     max_tokens: 200,
     messages: [{
       role: 'user',
-      content: `Compare two chatbot responses to the same question. This is Santiago's CV chatbot.
+      content: `Compare two chatbot responses to the same question. This is Taher Jamali's ("TJ") CV chatbot.
 
 Question: "${testInput.slice(0, 200)}"
 
@@ -193,8 +193,8 @@ async function main() {
 
     try {
       const [r1, r2] = await Promise.all([
-        callChatWithVersion(test.input, test.lang, v1),
-        callChatWithVersion(test.input, test.lang, v2),
+        callChatWithVersion(test.input, v1),
+        callChatWithVersion(test.input, v2),
       ])
 
       const v1Failed = test.assertions

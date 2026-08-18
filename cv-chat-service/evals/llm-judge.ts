@@ -1,10 +1,10 @@
 /**
- * LLM Judge usando Claude Haiku para evaluaciones subjetivas
+ * LLM Judge using Claude Haiku for subjective evaluations
  */
 
 import Anthropic from '@anthropic-ai/sdk'
 
-// Cliente lazy - se inicializa cuando se usa, no al importar el módulo
+// Lazy client — initialized on first use, not at module import time
 let client: Anthropic | null = null
 function getClient(): Anthropic {
   if (!client) {
@@ -19,7 +19,7 @@ export interface JudgeResult {
 }
 
 /**
- * Usa Claude Haiku para evaluar si una respuesta cumple criterios subjetivos
+ * Uses Claude Haiku to evaluate whether a response meets subjective criteria
  */
 export async function judgeTone(
   response: string,
@@ -32,19 +32,19 @@ export async function judgeTone(
       messages: [
         {
           role: 'user',
-          content: `Evalúa si esta respuesta de un chatbot cumple el criterio especificado.
+          content: `Evaluate whether this chatbot response meets the specified criterion.
 
-Criterio: ${criteria}
+Criterion: ${criteria}
 
-Respuesta a evaluar:
+Response to evaluate:
 """
 ${response}
 """
 
-Responde SOLO con JSON válido en este formato exacto (sin markdown):
-{"pass": true, "reason": "explicación breve de por qué pasa"}
-o
-{"pass": false, "reason": "explicación breve de por qué no pasa"}`,
+Respond with ONLY valid JSON in this exact format (no markdown):
+{"pass": true, "reason": "brief explanation of why it passes"}
+or
+{"pass": false, "reason": "brief explanation of why it doesn't pass"}`,
         },
       ],
     })
@@ -52,7 +52,7 @@ o
     const text =
       result.content[0].type === 'text' ? result.content[0].text : ''
 
-    // Limpiar posible markdown del JSON
+    // Strip any markdown fencing around the JSON
     const cleanText = text.replace(/```json\n?|\n?```/g, '').trim()
 
     const parsed = JSON.parse(cleanText)

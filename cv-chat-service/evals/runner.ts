@@ -1,15 +1,15 @@
 #!/usr/bin/env npx tsx
 
 /**
- * Runner principal para la suite de evals del chatbot Santi
+ * Main runner for TJ's eval suite
  *
- * Uso: npm run evals
+ * Usage: npm run evals
  */
 
 import * as fs from 'fs'
 import * as path from 'path'
 
-// Cargar .env.local si existe (para ANTHROPIC_API_KEY del LLM Judge)
+// Load .env.local if present (for ANTHROPIC_API_KEY, used by the LLM judge)
 const envLocalPath = path.join(import.meta.dirname, '.env.local')
 if (fs.existsSync(envLocalPath)) {
   const envContent = fs.readFileSync(envLocalPath, 'utf-8')
@@ -27,7 +27,7 @@ if (fs.existsSync(envLocalPath)) {
 import { runAssertion, type Assertion, type AssertionResult } from './assertions'
 import { judgeTone } from './llm-judge'
 
-// Tipos
+// Types
 interface ConversationMessage {
   role: 'user' | 'assistant'
   content: string
@@ -37,7 +37,6 @@ interface Test {
   id: string
   description: string
   input: string
-  lang: 'es' | 'en'
   assertions: Assertion[]
   conversation?: ConversationMessage[]
   mode?: 'voice'
@@ -78,16 +77,22 @@ interface DatasetResult {
   passRate: number
 }
 
-// Configuración
-// Por defecto usa vercel dev (puerto 3000), o se puede especificar otra URL
-const CHAT_API_URL = process.env.CHAT_API_URL || 'http://localhost:3000/api/chat'
+// Config — defaults to the local cv-chat-service dev adapter (scripts/dev-server.mjs, :8787),
+// or point CHAT_API_URL at a deployed cv-chat-service URL to test against production.
+const CHAT_API_URL = process.env.CHAT_API_URL || 'http://localhost:8787/api/chat'
 const RAG_SEARCH_URL = process.env.CHAT_API_URL
   ? process.env.CHAT_API_URL.replace('/api/chat', '/api/rag-search')
-  : 'http://localhost:3000/api/rag-search'
+  : 'http://localhost:8787/api/rag-search'
+const CHAT_SERVICE_SECRET = process.env.CHAT_SERVICE_SECRET
 const DATASETS_DIR = path.join(import.meta.dirname, 'datasets')
 const RESULTS_DIR = path.join(import.meta.dirname, 'results')
 
-// Colores para consola
+if (!CHAT_SERVICE_SECRET) {
+  console.error('❌ Missing CHAT_SERVICE_SECRET env var — cv-chat-service/api/chat.js rejects unauthenticated requests since the Phase 3 service split.')
+  process.exit(1)
+}
+
+// Console colors
 const colors = {
   reset: '\x1b[0m',
   green: '\x1b[32m',
@@ -99,24 +104,25 @@ const colors = {
 }
 
 /**
- * Llama al API del chat y obtiene la respuesta completa (sin streaming)
+ * Calls the chat API and returns the full response (buffers the stream)
  */
-async function callChat(input: string, lang: 'es' | 'en', conversation?: ConversationMessage[]): Promise<ChatResult> {
+async function callChat(input: string, conversation?: ConversationMessage[]): Promise<ChatResult> {
   const messages = conversation || [{ role: 'user', content: input }]
   const response = await fetch(CHAT_API_URL, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'X-Trace-Source': 'eval' },
-    body: JSON.stringify({
-      messages,
-      lang,
-    }),
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${CHAT_SERVICE_SECRET}`,
+      'X-Trace-Source': 'eval',
+    },
+    body: JSON.stringify({ messages }),
   })
 
   if (!response.ok) {
     throw new Error(`Chat API error: ${response.status} ${response.statusText}`)
   }
 
-  // Procesar SSE stream
+  // Parse the SSE stream
   const reader = response.body?.getReader()
   if (!reader) throw new Error('No reader available')
 
@@ -159,16 +165,18 @@ async function callChat(input: string, lang: 'es' | 'en', conversation?: Convers
 }
 
 /**
- * Llama al endpoint /api/rag-search para tests de voice mode
+ * Calls /api/rag-search for voice-mode tests
  */
-async function callVoiceRag(input: string, lang: 'es' | 'en'): Promise<ChatResult> {
+async function callVoiceRag(input: string): Promise<ChatResult> {
   const response = await fetch(RAG_SEARCH_URL, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${CHAT_SERVICE_SECRET}`,
+    },
     body: JSON.stringify({
       query: input,
       traceId: 'eval-' + Date.now(),
-      lang,
     }),
   })
 
@@ -181,7 +189,7 @@ async function callVoiceRag(input: string, lang: 'es' | 'en'): Promise<ChatResul
 }
 
 /**
- * Carga todos los datasets desde el directorio
+ * Loads all datasets from the directory
  */
 function loadDatasets(): Dataset[] {
   const files = fs.readdirSync(DATASETS_DIR).filter((f) => f.endsWith('.json'))
@@ -192,7 +200,7 @@ function loadDatasets(): Dataset[] {
 }
 
 /**
- * Ejecuta las assertions de un test
+ * Runs a test's assertions
  */
 async function runAssertions(
   response: string,
@@ -203,7 +211,7 @@ async function runAssertions(
 
   for (const assertion of assertions) {
     if (assertion.type === 'llm_judge') {
-      // Usar LLM judge para evaluaciones subjetivas
+      // Use the LLM judge for subjective evaluations
       const judgeResult = await judgeTone(response, assertion.criteria as string)
       results.push({
         passed: judgeResult.pass,
@@ -211,7 +219,7 @@ async function runAssertions(
         reason: judgeResult.reason,
       })
     } else {
-      // Assertions deterministas
+      // Deterministic assertions
       results.push(runAssertion(response, assertion, ragSources))
     }
   }
@@ -220,7 +228,7 @@ async function runAssertions(
 }
 
 /**
- * Ejecuta todos los tests de un dataset
+ * Runs every test in a dataset
  */
 async function runDataset(dataset: Dataset): Promise<DatasetResult> {
   console.log(
@@ -234,12 +242,12 @@ async function runDataset(dataset: Dataset): Promise<DatasetResult> {
     process.stdout.write(`   ${test.id}: `)
 
     try {
-      // Llamar al chat (o al endpoint de voice RAG si mode === 'voice')
+      // Call the chat API (or the voice RAG endpoint if mode === 'voice')
       const { text: response, ragSources } = test.mode === 'voice'
-        ? await callVoiceRag(test.input, test.lang)
-        : await callChat(test.input, test.lang, test.conversation)
+        ? await callVoiceRag(test.input)
+        : await callChat(test.input, test.conversation)
 
-      // Ejecutar assertions
+      // Run assertions
       const assertionResults = await runAssertions(response, test.assertions, ragSources)
       const passed = assertionResults.every((r) => r.passed)
 
@@ -257,7 +265,7 @@ async function runDataset(dataset: Dataset): Promise<DatasetResult> {
         console.log(`${colors.green}✓${colors.reset}`)
       } else {
         console.log(`${colors.red}✗${colors.reset}`)
-        // Mostrar detalles de fallos
+        // Show failure details
         for (const ar of assertionResults.filter((r) => !r.passed)) {
           console.log(`      ${colors.dim}└─ ${ar.reason}${colors.reset}`)
         }
@@ -294,7 +302,7 @@ async function runDataset(dataset: Dataset): Promise<DatasetResult> {
 }
 
 /**
- * Genera el reporte en markdown
+ * Generates the markdown report
  */
 function generateReport(datasetResults: DatasetResult[]): string {
   const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)
@@ -364,36 +372,39 @@ function generateReport(datasetResults: DatasetResult[]): string {
 async function main() {
   console.log(`${colors.bold}`)
   console.log(`╔═══════════════════════════════════════════╗`)
-  console.log(`║     Santi Chatbot Evals Suite             ║`)
+  console.log(`║           TJ Chatbot Evals Suite           ║`)
   console.log(`╚═══════════════════════════════════════════╝`)
   console.log(`${colors.reset}`)
 
   console.log(`${colors.dim}API: ${CHAT_API_URL}${colors.reset}`)
 
-  // Verificar que el API está disponible
+  // Verify the API is reachable
   try {
     const testResponse = await fetch(CHAT_API_URL, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        messages: [{ role: 'user', content: 'test' }],
-        lang: 'es',
-      }),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${CHAT_SERVICE_SECRET}`,
+      },
+      body: JSON.stringify({ messages: [{ role: 'user', content: 'test' }] }),
     })
     if (!testResponse.ok && testResponse.status === 404) {
       throw new Error('API not found')
+    }
+    if (testResponse.status === 401) {
+      throw new Error('Unauthorized — check CHAT_SERVICE_SECRET matches cv-chat-service/.env.local')
     }
   } catch {
     console.log(
       `\n${colors.red}❌ Error: Cannot connect to ${CHAT_API_URL}${colors.reset}`
     )
     console.log(`${colors.dim}   Options:${colors.reset}`)
-    console.log(`${colors.dim}   1. Run 'vercel dev' (serves edge functions on port 3000)${colors.reset}`)
-    console.log(`${colors.dim}   2. Test against production: CHAT_API_URL=https://santifer.io/api/chat npm run evals${colors.reset}`)
+    console.log(`${colors.dim}   1. Run 'npm run dev --workspace=cv-chat-service' (serves the dev adapter on :8787)${colors.reset}`)
+    console.log(`${colors.dim}   2. Test against a deployed cv-chat-service: CHAT_API_URL=https://your-chat-service.vercel.app/api/chat CHAT_SERVICE_SECRET=... npm run evals${colors.reset}`)
     process.exit(1)
   }
 
-  // Cargar y ejecutar datasets
+  // Load and run datasets
   const datasets = loadDatasets()
   const datasetResults: DatasetResult[] = []
 
@@ -402,7 +413,7 @@ async function main() {
     datasetResults.push(result)
   }
 
-  // Resumen
+  // Summary
   let totalPassed = 0
   let totalTests = 0
 
@@ -426,7 +437,7 @@ async function main() {
 
   console.log(`\n  ${colors.bold}Overall: ${totalPassed}/${totalTests} (${overallPassRate}%)${colors.reset}`)
 
-  // Generar reporte
+  // Generate report
   const report = generateReport(datasetResults)
   const reportPath = path.join(
     RESULTS_DIR,
