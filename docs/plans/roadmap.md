@@ -47,7 +47,8 @@ These apply across all phases; don't relitigate them without a reason:
 | 2 | Text Chatbot + RAG | ✅ Done |
 | 3 | Service Split — Isolate the Chat/AI Backend | ✅ Done |
 | 4 | Evals + Prompt-Injection Defense | ✅ Done |
-| 5 | Voice Mode + `/ops` LLMOps Dashboard | Not started |
+| 5a | `/ops` LLMOps Dashboard | Test done |
+| 5b | Voice Mode | Not started |
 
 ---
 
@@ -234,20 +235,78 @@ the chat service's final location, not get built against a layout that's about t
 **Goal:** voice interaction with the chatbot, and a password-protected `/ops` dashboard for observing it in
 production (conversations, costs, RAG, security, evals, voice, prompts, system health).
 
-**Existing scaffolding (dormant):** `src/useVoiceMode.ts`, `src/VoiceOrb.tsx`, `src/useAudioAnalyser.ts`,
-`src/ops/`, `api/ops/`, `tests/ops-contract.test.ts`, `tests/ops-dashboard.test.ts` (validate the `/api/ops/*`
-endpoint contract and dashboard API — reclassified here from Phase 4 during that phase's investigation, since
-they test the dashboard, not the chatbot/evals). The dashboard reads from Langfuse + Supabase — both accounts
-already exist (set up in Phase 2 for RAG) — but the dashboard itself is still unwired; currently routed at
-`/ops` but unlinked from the UI and non functional. Per the service-architecture decision, both land in the
-Chat/AI service (Phase 3), not the UI.
-
-**Rough scope (detail goes in `phase-5-voice-ops.md` when this starts):**
-- Wire voice mode into `FloatingChat.tsx`.
-- Point `/ops` at real data; decide on its auth/password setup.
-- Update the ops dashboard to use Google Gemini models and remove OpenAI models.
-  - Swap out OpenAI's Realtime API with Google's equivalent, Live API. (this might be a large diff so consider splitting into smaller PRs)
+**Split into two independent sub-phases (decided during 5's Investigate stage, 2026-08-18)** — the two halves
+have wildly different risk profiles: `/ops` is close to mechanical (generic backend, existing contract tests,
+~2 content strings to fix), voice mode is a real architectural rewrite with an open research question (does
+Google's Live API support the same ephemeral-token/direct-browser-WebSocket connection model OpenAI's
+Realtime API uses?). Each sub-phase gets its own full Investigate→Plan→Test→Implement cycle. `/ops` goes
+first — it's useful immediately for observing the Phase 4 eval/defense work, and de-risks nothing about voice
+mode's provider question, so there's no reason to gate it on voice mode's research.
 
 **Depends on:** Phase 2 (voice needs a working text chatbot underneath it), Phase 3 (this is where the service
 that hosts voice/ops actually lives), and Phase 4 (dashboard's `Evals`/`Security` tabs need the eval suite and
 defense layers to be real).
+
+---
+
+### Phase 5a — `/ops` LLMOps Dashboard
+
+Test done, full writeup: **[`docs/plans/phase-5a-ops-dashboard.md`](phase-5a-ops-dashboard.md)**.
+
+**Existing scaffolding (dormant):** `cv-ui/src/ops/` (frontend — `OpsAuth.tsx`, `OpsDashboard.tsx`,
+components, tabs, `useOpsApi.ts`), `cv-chat-service/api/ops/` (7 endpoints: `auth`, `stats`, `traces`,
+`trace/[id]`, `evals`, `prompts`, `rag-stats`), `cv-chat-service/api/_shared/ops-auth.js`,
+`tests/ops-contract.test.ts`/`tests/ops-dashboard.test.ts` (validate the `/api/ops/*` contract and dashboard
+API — reclassified here from Phase 4 during that phase's investigation). Already routed at `/ops` in
+`main.tsx`, unlinked from nav. The dashboard reads from Langfuse + Supabase — both accounts already exist
+(set up in Phase 2 for RAG).
+
+**Investigate findings:**
+- The `api/ops/*.js` backend is **fully generic** — zero Santiago-specific content found across all 7
+  endpoints. The frontend shell has exactly 2 "santifer.io" branding strings (`OpsDashboard.tsx`'s page title
+  and header subtitle). This is much closer to a wiring-and-content job than a rebuild.
+- `OPS_DASHBOARD_SECRET`, `CRON_SECRET`, and `ALERT_EMAIL` aren't in `cv-chat-service/.env.local.example` yet
+  — need provisioning (real values, my own choice of dashboard password).
+- Neither `/api/ops/*` nor `/api/voice-*` are in `scripts/dev-server.mjs`'s route table (only `/api/chat` is)
+  — same class of gap Phase 3 left and Phase 4 worked around. Both `tests/ops-*.test.ts` files still target
+  the pre-split `localhost:3000` convention too. Needs the same treatment Phase 4 gave the eval scripts:
+  extend the route table and fix the port/expectations.
+- `api/cron/evaluate.js` (Vercel Cron, daily batch LLM-judge scoring + email alerts) is a near-duplicate of
+  `scripts/evaluate-traces.ts` (Phase 4, already rewritten for Taher) — same job, separately maintained, the
+  cron copy still 100% Santiago content with a stale model id. **Decided: consolidate into one shared module**
+  both the cron job and the manual script call, rather than fixing the cron copy's content independently and
+  leaving the duplication in place.
+- `stats.js`/`traces.js` still carry a bilingual `lang`/`languages` dimension (filters, distributions) left
+  over from the pre-Phase-1 bilingual era — harmless (just always empty now, since `chat.js` stopped tagging
+  traces with a language), not yet decided whether to clean up as part of this phase or leave as dead-but-
+  harmless, matching the `tests/ops-*.test.ts` contract that still asserts on it.
+
+**Depends on:** Phase 4 (dashboard's `Evals`/`Security` tabs need the eval suite and defense layers to be real
+— done).
+
+---
+
+### Phase 5b — Voice Mode
+
+Not started — Investigate hasn't begun. Blocked behind a research question, not just implementation: does
+Google's Live API support the same ephemeral-token/direct-browser-WebSocket pattern `useVoiceMode.ts`
+currently uses with OpenAI's Realtime API? If not, this isn't a provider swap, it's a different architecture
+(e.g., proxying audio through the backend instead of a direct client connection) — that has to be answered
+before planning, not assumed.
+
+**Existing scaffolding (dormant):** `cv-ui/src/useVoiceMode.ts` (~800 lines, OpenAI-Realtime-specific,
+structurally bilingual — `VOICE_AFFECT_ES`/`EN`, `lang` threaded through every function, same category of
+surgery Phase 2 did on `i18n.ts`, not a find-replace), `cv-chat-service/api/voice-token.js` (mints OpenAI
+ephemeral tokens, 100% Santiago/Jacobo persona prompt in Spanish), `cv-chat-service/api/voice-trace.js`
+(Langfuse cost tracking, OpenAI-specific pricing constants, otherwise generic/reusable). `VoiceOrb.tsx` and
+`useAudioAnalyser.ts` are pure presentational/generic — fully reusable regardless of provider. `api/rag-search.js`
+(the `search_portfolio` tool backend for voice) already reuses `_shared/rag.js` and is architecture-agnostic.
+
+**Rough scope (detail goes in `phase-5b-voice-mode.md` when this starts):**
+- Research Google Live API's client-connection model first, before planning anything else.
+- Rewrite the persona prompt for TJ, in English only — strip the bilingual architecture, not just translate it.
+- Wire voice mode into `FloatingChat.tsx` (currently zero references — fully unwired).
+- Update voice cost tracking (`voice-trace.js`) for Google Live API's pricing model.
+
+**Depends on:** Phase 2 (voice needs a working text chatbot underneath it), Phase 3 (this is where the service
+that hosts voice actually lives).
