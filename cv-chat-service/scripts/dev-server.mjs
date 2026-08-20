@@ -25,14 +25,26 @@ register(new URL('./txt-loader.mjs', import.meta.url), import.meta.url)
 const PORT = process.env.PORT || 8787
 
 // Route table — one entry per api/*.js file this adapter can serve locally.
-// Only /api/chat exists today; /api/ops/*, /api/voice-*.js are Phase 4/5
-// dormant and not wired here yet.
+// /api/chat and /api/ops/* are wired (Phase 3, Phase 5a); /api/voice-*.js is
+// still not — that subsystem's provider is being rewritten in Phase 5b, so
+// wiring a route for code about to be replaced wholesale would be wasted work.
 const routes = {
   '/api/chat': () => import('../api/chat.js'),
+  '/api/ops/auth': () => import('../api/ops/auth.js'),
+  '/api/ops/stats': () => import('../api/ops/stats.js'),
+  '/api/ops/traces': () => import('../api/ops/traces.js'),
+  '/api/ops/evals': () => import('../api/ops/evals.js'),
+  '/api/ops/prompts': () => import('../api/ops/prompts.js'),
+  '/api/ops/rag-stats': () => import('../api/ops/rag-stats.js'),
 }
 
 const server = createServer(async (nodeReq, nodeRes) => {
-  const routeLoader = routes[nodeReq.url]
+  // Match on pathname only — several /api/ops/* endpoints take query params
+  // (?days=3, etc.), which /api/chat never needed to handle.
+  const pathname = nodeReq.url.split('?')[0]
+  const routeLoader = pathname.startsWith('/api/ops/trace/')
+    ? () => import('../api/ops/trace/[id].js')
+    : routes[pathname]
   if (!routeLoader) {
     nodeRes.writeHead(404).end('Not found')
     return

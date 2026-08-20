@@ -12,7 +12,7 @@ export default function ConversationsTab({ loading: _statsLoading }: TabProps) {
 
   useEffect(() => {
     resetFilters()
-  }, [filters.days, filters.lang, filters.mode, filters.rag, filters.jailbreak, resetFilters])
+  }, [filters.days, filters.mode, filters.rag, filters.jailbreak, resetFilters])
 
   return (
     <div className="space-y-3 sm:space-y-4">

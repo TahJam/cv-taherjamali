@@ -4,7 +4,6 @@ import type { OpsTrace } from '../types'
 
 export interface TraceFilters {
   days: number
-  lang?: string
   mode?: string
   rag?: string
   jailbreak?: boolean
@@ -23,7 +22,6 @@ export function useTraces(filters: TraceFilters) {
       limit: String(PAGE_SIZE),
       offset: String(offset),
     }
-    if (filters.lang) p.lang = filters.lang
     if (filters.mode) p.mode = filters.mode
     if (filters.rag) p.rag = filters.rag
     if (filters.jailbreak) p.jailbreak = 'true'

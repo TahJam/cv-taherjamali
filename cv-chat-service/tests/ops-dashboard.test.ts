@@ -1,7 +1,9 @@
 /**
  * Ops Dashboard API test suite.
  * Tests all 7 API endpoints: auth, stats, traces, trace detail, evals, prompts, rag-stats.
- * Requires `vercel dev` running on localhost:3000.
+ * Requires `npm run dev --workspace=cv-chat-service` running (scripts/dev-server.mjs, :8787)
+ * with a real OPS_DASHBOARD_SECRET set in cv-chat-service/.env.local — the "correct password"
+ * assertions in testAuth() only mean something if this test's SECRET matches the server's.
  *
  * Usage: npm run test:ops
  */
@@ -9,7 +11,7 @@
 import { config } from 'dotenv'
 config({ path: '.env.local' })
 
-const BASE_URL = process.env.OPS_TEST_BASE_URL || 'http://localhost:3000'
+const BASE_URL = process.env.OPS_TEST_BASE_URL || 'http://localhost:8787'
 const SECRET = process.env.OPS_DASHBOARD_SECRET || 'test-ops-secret-123'
 
 // ---------------------------------------------------------------------------
@@ -170,7 +172,6 @@ async function testStats() {
   // Distributions
   assert(data.distributions != null, 'Has distributions object')
   const dist = data.distributions as Record<string, unknown>
-  assert(dist.languages != null, 'distributions.languages exists')
   assert(dist.intents != null, 'distributions.intents exists')
   assert(dist.ragActivation != null, 'distributions.ragActivation exists')
   const rag = dist.ragActivation as { yes: number; no: number }
@@ -206,10 +207,6 @@ async function testTraces() {
     assert('lastUserMessage' in meta || meta.lastUserMessage === null, 'metadata has lastUserMessage key')
   }
 
-  // Filter: lang
-  const resEs = await fetchAuthed('/api/ops/traces', { lang: 'es', limit: '5' })
-  assert(resEs.status === 200, 'lang=es filter returns 200')
-
   // Filter: mode
   const resVoice = await fetchAuthed('/api/ops/traces', { mode: 'voice', limit: '5' })
   assert(resVoice.status === 200, 'mode=voice filter returns 200')
@@ -226,7 +223,7 @@ async function testTraces() {
   assert(resJail.status === 200, 'jailbreak=true filter returns 200')
 
   // Combined filters
-  const resCombined = await fetchAuthed('/api/ops/traces', { lang: 'es', rag: 'yes', limit: '5' })
+  const resCombined = await fetchAuthed('/api/ops/traces', { mode: 'text', rag: 'yes', limit: '5' })
   assert(resCombined.status === 200, 'Combined filters return 200')
 
   // Pagination
@@ -348,8 +345,8 @@ async function main() {
   // Check server is running
   const running = await checkServerRunning()
   if (!running) {
-    console.error('Cannot connect to server. Start vercel dev first:')
-    console.error(`  cd ${process.cwd()} && vercel dev`)
+    console.error('Cannot connect to server. Start the local dev adapter first:')
+    console.error(`  npm run dev --workspace=cv-chat-service`)
     process.exit(1)
   }
 

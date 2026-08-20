@@ -21,7 +21,6 @@ export interface OpsStats {
     avgLatencyMs: number
   }>
   distributions: {
-    languages: Record<string, number>
     intents: Record<string, number>
     ragActivation: { yes: number; no: number }
   }
@@ -32,7 +31,6 @@ export interface OpsTrace {
   timestamp: string
   tags: string[]
   metadata: {
-    lang?: string
     messageCount?: number
     lastUserMessage?: string
     promptVersion?: string

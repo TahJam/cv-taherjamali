@@ -63,7 +63,6 @@ export default async function handler(req) {
     let safetyCount = 0
     let textConvos = 0
     let voiceConvos = 0
-    const languages = { es: 0, en: 0 }
     const intents = {}
     const ragActivation = { yes: 0, no: 0 }
 
@@ -95,10 +94,6 @@ export default async function handler(req) {
         safetySum += safety
         safetyCount++
       }
-
-      // Languages
-      if (tags.includes('es')) languages.es++
-      else if (tags.includes('en')) languages.en++
 
       // Intents
       for (const tag of tags) {
@@ -170,7 +165,6 @@ export default async function handler(req) {
       },
       daily: dailyArray,
       distributions: {
-        languages,
         intents,
         ragActivation,
       },

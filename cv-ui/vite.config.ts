@@ -23,9 +23,15 @@ export default defineConfig(({ mode }) => {
           // (which never runs locally — no vercel dev), so it needs to do
           // the one thing that proxy function actually does: attach the
           // shared secret. The browser itself never sends this.
+          // Scoped to /api/chat only — /api/ops/* has its own, separate auth
+          // scheme (OPS_DASHBOARD_SECRET, carried by the browser itself via
+          // the ops dashboard's own login flow); overwriting its Authorization
+          // header here would clobber that with the wrong secret and always 401.
           configure: (proxy) => {
-            proxy.on('proxyReq', (proxyReq) => {
-              proxyReq.setHeader('Authorization', `Bearer ${env.CHAT_SERVICE_SECRET || ''}`)
+            proxy.on('proxyReq', (proxyReq, req) => {
+              if (req.url?.startsWith('/api/chat')) {
+                proxyReq.setHeader('Authorization', `Bearer ${env.CHAT_SERVICE_SECRET || ''}`)
+              }
             })
           },
         },

@@ -1,9 +1,9 @@
 {
-  "date": "2026-07-30T11:53:06",
-  "passRate": 0.9315068493150684,
-  "totalTests": 73,
-  "passed": 68,
-  "failed": 5,
+  "date": "2026-08-18T20:43:54",
+  "passRate": 0.8928571428571429,
+  "totalTests": 56,
+  "passed": 50,
+  "failed": 6,
   "categories": [
     {
       "name": "boundary_testing",
@@ -13,21 +13,15 @@
     },
     {
       "name": "factual_accuracy",
-      "total": 11,
-      "passed": 10,
-      "passRate": 0.91
-    },
-    {
-      "name": "language_handling",
-      "total": 5,
-      "passed": 5,
+      "total": 9,
+      "passed": 9,
       "passRate": 1
     },
     {
       "name": "multi_turn",
       "total": 5,
-      "passed": 3,
-      "passRate": 0.6
+      "passed": 5,
+      "passRate": 1
     },
     {
       "name": "persona_adherence",
@@ -43,9 +37,9 @@
     },
     {
       "name": "rag_quality",
-      "total": 16,
-      "passed": 15,
-      "passRate": 0.94
+      "total": 8,
+      "passed": 8,
+      "passRate": 1
     },
     {
       "name": "safety_jailbreak",
@@ -55,16 +49,47 @@
     },
     {
       "name": "source_badges",
-      "total": 5,
-      "passed": 4,
-      "passRate": 0.8
+      "total": 3,
+      "passed": 3,
+      "passRate": 1
     },
     {
       "name": "voice_quality",
       "total": 6,
-      "passed": 6,
-      "passRate": 1
+      "passed": 0,
+      "passRate": 0
     }
   ],
-  "failedTests": []
+  "failedTests": [
+    {
+      "name": "voice-content-jacobo",
+      "category": "voice_quality",
+      "reason": "Assertion failed"
+    },
+    {
+      "name": "voice-no-markdown",
+      "category": "voice_quality",
+      "reason": "Assertion failed"
+    },
+    {
+      "name": "voice-factual-jacobo",
+      "category": "voice_quality",
+      "reason": "Assertion failed"
+    },
+    {
+      "name": "voice-grounding-invented",
+      "category": "voice_quality",
+      "reason": "Assertion failed"
+    },
+    {
+      "name": "voice-brevity-general",
+      "category": "voice_quality",
+      "reason": "Assertion failed"
+    },
+    {
+      "name": "voice-no-urls",
+      "category": "voice_quality",
+      "reason": "Assertion failed"
+    }
+  ]
 }

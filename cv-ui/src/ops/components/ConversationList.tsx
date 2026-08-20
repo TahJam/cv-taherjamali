@@ -18,12 +18,6 @@ function formatTime(ts: string): string {
   return d.toLocaleString('en-GB', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
 }
 
-function langEmoji(lang?: string): string {
-  if (lang === 'es') return '\uD83C\uDDEA\uD83C\uDDF8'
-  if (lang === 'en') return '\uD83C\uDDEC\uD83C\uDDE7'
-  return '\uD83C\uDF10'
-}
-
 export default function ConversationList({ traces, selected, onSelect, loading }: ConversationListProps) {
   if (loading && traces.length === 0) {
     return (
@@ -57,7 +51,6 @@ export default function ConversationList({ traces, selected, onSelect, loading }
             }`}
           >
             <div className="flex items-center gap-1.5 sm:gap-2 mb-0.5 sm:mb-1">
-              <span className="text-[10px] sm:text-xs">{langEmoji(trace.metadata?.lang)}</span>
               <span className="text-[10px] sm:text-xs text-muted-foreground">{isVoice ? '\uD83C\uDF99\uFE0F' : '\uD83D\uDCAC'}</span>
               <span className="text-[10px] sm:text-xs text-muted-foreground flex-1">{formatTime(trace.timestamp)}</span>
               {cost !== undefined && (

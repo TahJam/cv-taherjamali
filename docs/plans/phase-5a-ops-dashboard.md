@@ -1,8 +1,10 @@
 # Phase 5a — `/ops` LLMOps Dashboard
 
-Status: **Test done, ready for Implement stage.** Split out of the original Phase 5 (Voice Mode + `/ops`)
-during Phase 5's Investigate stage — see `docs/plans/roadmap.md`'s Phase 5 intro for why. Depends on Phase 4
-(the `Evals`/`Security` tabs need a real eval suite and defense layers — done).
+Status: **✅ Done** — Investigate/Plan/Test/Implement all complete, verified end-to-end in a real browser
+against real production data (89.3% eval pass rate — the actual Phase 4 result — rendering live on the
+dashboard). Split out of the original Phase 5 (Voice Mode + `/ops`) during Phase 5's Investigate stage — see
+`docs/plans/roadmap.md`'s Phase 5 intro for why. Depends on Phase 4 (the `Evals`/`Security` tabs need a real
+eval suite and defense layers — done).
 
 ## 1. Investigation findings
 
@@ -285,3 +287,95 @@ code review:
 
 No blockers found. All three designs from the Plan stage hold up under real execution, with one small routing
 fix (query-string stripping) and one real bug fix (the parser regex) folded into the Plan's scope above.
+
+## 6. Implementation ✅ Done
+
+Everything in the Plan's scope was implemented, plus two significant gaps found only during Implement — both
+are documented here because they materially expand what shipped beyond the Plan stage's scope.
+
+### Built as planned
+
+- `scripts/dev-server.mjs`: extended route table (6 static `/api/ops/*` endpoints + dynamic `trace/[id]`
+  prefix match), pathname-only matching, updated the stale comment.
+- `tests/ops-dashboard.test.ts`: port fix (`:3000` → `:8787`), documented the `OPS_DASHBOARD_SECRET`
+  requirement, updated the "start the server" error message.
+- `api/_shared/evaluator.js` (new): the consolidated `EVALUATOR_PROMPT` + `evaluateTrace()`, exactly as
+  validated in Test stage. `api/cron/evaluate.js` and `scripts/evaluate-traces.ts` both now import it instead
+  of maintaining their own copies; `Santi Bot` → `TJ Bot` sender fix landed as part of this.
+- `vercel.json` (`cv-chat-service`): added a `crons` entry so `api/cron/evaluate.js` actually runs (it never
+  did before — no cron config existed).
+- `scripts/embed-evals.ts`: fixed the section-split regex bug (found in Test stage) and the stale "called
+  automatically during npm run build" docstring claim; ran it for real against the Phase 4 report.
+  `api/ops/_eval-results.json`/`.js` now hold real Taher data (50/56, 89.3%) instead of Santiago's stale
+  2026-07-30 snapshot.
+- `OpsAuth.tsx`/`OpsDashboard.tsx`: `santifer.io` → `PROFILE.name` (imported from `cv-data.ts`), 3 occurrences.
+- `.env.local.example`: added `OPS_DASHBOARD_SECRET`, `CRON_SECRET`, `ALERT_EMAIL` with guidance comments.
+
+### Found during Implement: the bilingual removal was much bigger than scoped
+
+The Plan (§3.3) only listed `stats.js`/`traces.js`/the test file for the bilingual-dimension removal. Actually
+removing `distributions.languages` from the API response would have **crashed the Overview tab** —
+`OpsDashboard.tsx` did `Object.entries(distributions.languages)` unguarded. Grepping the frontend surfaced 6
+more files with real dependencies on the removed fields: `types.ts` (the TS interfaces), `OpsDashboard.tsx`
+(the language donut chart — removed, grid changed from 3 to 2 columns), `FilterBar.tsx` (a language filter
+`<select>`), `ConversationList.tsx` (a per-trace flag-emoji helper), `SecurityTab.tsx` (a per-trace language
+badge), `ConversationsTab.tsx` and `hooks/useTraces.ts` (filter state plumbing). All fixed; `cv-ui`'s
+`tsc -b --noEmit` is clean.
+
+### Found during Implement: `/api/ops/*` had no route to reach `cv-chat-service` in production at all
+
+This is the significant one. `cv-ui/src/ops/hooks/useOpsApi.ts` fetches `/api/ops/*` against
+`window.location.origin` — same-origin, i.e. `cv-ui`'s own domain. But `cv-ui/api/` only ever contained
+`chat.js`; there was no `cv-ui/vercel.json` rewrite either. In production, every single `/api/ops/*` call from
+the dashboard would 404 against `cv-ui`'s own deployment — the entire dashboard's data layer simply doesn't
+reach `cv-chat-service` at all. This is squarely a "make `/ops` work in production" gap, i.e. the core goal of
+this phase, and it was missed in both Investigate and Plan because investigation only ever looked at
+`cv-chat-service`'s side of `/api/ops/*`, never traced how the browser (on `cv-ui`'s separate domain) would
+actually reach it.
+
+Locally this was masked entirely: Vite's dev proxy forwards all `/api/*` to `cv-chat-service`'s dev port
+regardless of path, so routing "worked" — but its `configure` hook (added in Phase 3, for `/api/chat`)
+unconditionally overwrote the `Authorization` header on every proxied request with `CHAT_SERVICE_SECRET`,
+clobbering the ops dashboard's own bearer token and always producing a 401 locally too. Caught via a real
+Playwright login attempt, not code review.
+
+Fixed both, following the already-established Phase 3 pattern (thin proxy function, `CHAT_SERVICE_URL` from
+env, never hardcoded — not a static `vercel.json` rewrite, since those can't read env vars, the exact reason
+Phase 3 rejected a rewrite for `/api/chat` too):
+
+- `cv-ui/vite.config.ts`: scoped the `Authorization`-injecting `configure` hook to `/api/chat` only, so
+  `/api/ops/*` requests pass the browser's own header through unmodified.
+- `cv-ui/api/ops/[...path].js` (new): a catch-all proxy mirroring `api/chat.js`'s pattern, but without secret
+  injection — `/api/ops/*` uses its own auth scheme (`OPS_DASHBOARD_SECRET`), carried by the browser itself,
+  not something the proxy needs to attach. Forwards method, headers (including the real `Authorization`),
+  query string, and body through to `${CHAT_SERVICE_URL}${pathname}${search}`.
+
+Verified for real, not just reviewed: direct handler invocation of the new proxy (3 cases — authenticated GET
+with query params, POST auth with wrong password, the dynamic `trace/[id]` route through the catch-all — all
+correct), then a full Playwright run through the actual browser flow: login, dashboard renders with real data
+(`89.3%` eval pass rate visible on screen, 2 donuts not 3, all 7 tabs present), zero console errors.
+
+### Full verification
+
+- `npx tsx tests/ops-dashboard.test.ts` against the real local dev server: **85/85 passed**, all 7 endpoints,
+  auth + auth-protection on all 5 data endpoints, every trace filter combination.
+- Real browser walkthrough (Playwright): login flow, Overview tab renders with live data including the real
+  Phase 4 eval pass rate, zero console/page errors, screenshots confirm correct layout after the donut removal.
+- `cv-ui` and `cv-chat-service` typechecks: no new errors introduced (one pre-existing implicit-`any` import
+  boundary, accepted per the Plan §3.2 tradeoff; 4 pre-existing errors in `evaluate-traces.ts` confirmed via
+  `git stash` to predate this phase's changes, all in code never touched here).
+
+### Final commit grouping
+
+The 5-commit plan held, with the two Implement-stage findings folded into their nearest logical commit rather
+than becoming new ones — both are really "make the local/production wiring actually work" concerns, the same
+job as commit 1:
+
+1. **Local dev/test infra + bilingual cleanup + production routing fix** — now also includes
+   `cv-ui/vite.config.ts`, `cv-ui/api/ops/[...path].js`, and the 6 additional frontend files from the
+   bilingual-removal scope expansion, alongside the originally-planned `dev-server.mjs`/test-port/
+   `stats.js`/`traces.js` changes.
+2. **Evaluator consolidation** — as planned.
+3. **Regenerate real eval data** — as planned.
+4. **Dashboard content + env provisioning** — as planned.
+5. **Docs** — this update.

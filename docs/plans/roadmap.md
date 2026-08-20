@@ -47,7 +47,7 @@ These apply across all phases; don't relitigate them without a reason:
 | 2 | Text Chatbot + RAG | ✅ Done |
 | 3 | Service Split — Isolate the Chat/AI Backend | ✅ Done |
 | 4 | Evals + Prompt-Injection Defense | ✅ Done |
-| 5a | `/ops` LLMOps Dashboard | Test done |
+| 5a | `/ops` LLMOps Dashboard | ✅ Done |
 | 5b | Voice Mode | Not started |
 
 ---
@@ -249,37 +249,44 @@ defense layers to be real).
 
 ---
 
-### Phase 5a — `/ops` LLMOps Dashboard
+### Phase 5a — `/ops` LLMOps Dashboard ✅ Done
 
-Test done, full writeup: **[`docs/plans/phase-5a-ops-dashboard.md`](phase-5a-ops-dashboard.md)**.
+Full investigate/plan/test/implement writeup: **[`docs/plans/phase-5a-ops-dashboard.md`](phase-5a-ops-dashboard.md)**.
 
-**Existing scaffolding (dormant):** `cv-ui/src/ops/` (frontend — `OpsAuth.tsx`, `OpsDashboard.tsx`,
-components, tabs, `useOpsApi.ts`), `cv-chat-service/api/ops/` (7 endpoints: `auth`, `stats`, `traces`,
-`trace/[id]`, `evals`, `prompts`, `rag-stats`), `cv-chat-service/api/_shared/ops-auth.js`,
-`tests/ops-contract.test.ts`/`tests/ops-dashboard.test.ts` (validate the `/api/ops/*` contract and dashboard
-API — reclassified here from Phase 4 during that phase's investigation). Already routed at `/ops` in
-`main.tsx`, unlinked from nav. The dashboard reads from Langfuse + Supabase — both accounts already exist
-(set up in Phase 2 for RAG).
-
-**Investigate findings:**
-- The `api/ops/*.js` backend is **fully generic** — zero Santiago-specific content found across all 7
-  endpoints. The frontend shell has exactly 2 "santifer.io" branding strings (`OpsDashboard.tsx`'s page title
-  and header subtitle). This is much closer to a wiring-and-content job than a rebuild.
-- `OPS_DASHBOARD_SECRET`, `CRON_SECRET`, and `ALERT_EMAIL` aren't in `cv-chat-service/.env.local.example` yet
-  — need provisioning (real values, my own choice of dashboard password).
-- Neither `/api/ops/*` nor `/api/voice-*` are in `scripts/dev-server.mjs`'s route table (only `/api/chat` is)
-  — same class of gap Phase 3 left and Phase 4 worked around. Both `tests/ops-*.test.ts` files still target
-  the pre-split `localhost:3000` convention too. Needs the same treatment Phase 4 gave the eval scripts:
-  extend the route table and fix the port/expectations.
-- `api/cron/evaluate.js` (Vercel Cron, daily batch LLM-judge scoring + email alerts) is a near-duplicate of
-  `scripts/evaluate-traces.ts` (Phase 4, already rewritten for Taher) — same job, separately maintained, the
-  cron copy still 100% Santiago content with a stale model id. **Decided: consolidate into one shared module**
-  both the cron job and the manual script call, rather than fixing the cron copy's content independently and
-  leaving the duplication in place.
-- `stats.js`/`traces.js` still carry a bilingual `lang`/`languages` dimension (filters, distributions) left
-  over from the pre-Phase-1 bilingual era — harmless (just always empty now, since `chat.js` stopped tagging
-  traces with a language), not yet decided whether to clean up as part of this phase or leave as dead-but-
-  harmless, matching the `tests/ops-*.test.ts` contract that still asserts on it.
+**Scope:**
+- `cv-chat-service/api/ops/*` (7 endpoints) turned out to be fully generic — zero Santiago-specific content.
+  The frontend shell (`cv-ui/src/ops/`) needed 3 branding strings swapped (`PROFILE.name`, imported from
+  `cv-data.ts`) and env provisioning (`OPS_DASHBOARD_SECRET`, `CRON_SECRET`, `ALERT_EMAIL`).
+- Extended `scripts/dev-server.mjs`'s route table for `/api/ops/*` (pathname-only matching — several
+  endpoints take query params `/api/chat` never needed to handle — plus a prefix match for the dynamic
+  `trace/[id]` route). Fixed `tests/ops-dashboard.test.ts`'s stale `localhost:3000` default.
+- Consolidated a duplicated LLM-as-judge evaluator: `api/cron/evaluate.js` (Vercel Cron, daily) and
+  `scripts/evaluate-traces.ts` (Phase 4, manual) had separately-maintained copies of the same prompt — the
+  cron copy was still 100% Santiago content with a stale model id. Extracted a shared
+  `api/_shared/evaluator.js`; added a `crons` entry to `vercel.json` so the job actually runs (it never had
+  one before).
+- Regenerated the dashboard's Evals-tab data: `api/ops/_eval-results.json`/`.js` were a static, committed
+  snapshot from Santiago's last eval run (2026-07-30) — its generator script, `scripts/embed-evals.ts`, is
+  fully generic but had never been run against Taher's content, and its "runs automatically during npm run
+  build" docstring claim was false (not wired into any script). Running it for real surfaced and fixed a
+  genuine parser bug (a section-split regex that silently made the `failedTests` array always empty,
+  regardless of content) before regenerating the real data (50/56, 89.3%).
+- Removing the dead bilingual `lang`/`languages` dimension (matching the Phase 4 `languages.json` precedent)
+  turned out to reach much further than the backend — 6 more frontend files depended on it, including one
+  (`OpsDashboard.tsx`) that would have crashed the Overview tab outright once the API stopped returning it.
+  All fixed; `tsc --noEmit` clean on both workspaces.
+- **Found and fixed a production-breaking gap missed in Investigate and Plan**: `cv-ui` had no route at all
+  for `/api/ops/*` — the dashboard's own API calls target same-origin (`cv-ui`'s domain), but only
+  `cv-chat-service` ever had those endpoints. Every dashboard data call would have 404'd in production. Fixed
+  with a thin catch-all proxy (`cv-ui/api/ops/[...path].js`), following the same pattern Phase 3 already
+  established for `/api/chat` (`CHAT_SERVICE_URL` from env, never hardcoded — a static `vercel.json` rewrite
+  can't read env vars, the same reason that was rejected for `/api/chat` too). Also fixed a related local-dev
+  bug this exposed: Vite's dev proxy (Phase 3) unconditionally overwrote every `/api/*` request's
+  `Authorization` header with `CHAT_SERVICE_SECRET`, clobbering the ops dashboard's own separate auth token
+  and always producing a 401 locally — scoped that injection to `/api/chat` only.
+- Verified end-to-end for real: 85/85 on `tests/ops-dashboard.test.ts` against the local dev server, direct
+  handler invocation of the new proxy, and a full Playwright browser walkthrough — login, dashboard renders
+  with live data including the real 89.3% eval pass rate on screen, zero console errors.
 
 **Depends on:** Phase 4 (dashboard's `Evals`/`Security` tabs need the eval suite and defense layers to be real
 — done).

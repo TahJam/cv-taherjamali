@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, lazy, Suspense } from 'react'
 import OpsAuth from './OpsAuth'
+import { PROFILE } from '../cv-data'
 import TabNav from './components/TabNav'
 import KpiCard from './components/KpiCard'
 import MetricChart from './components/MetricChart'
@@ -35,7 +36,7 @@ export default function OpsDashboard() {
       document.head.appendChild(robots)
     }
     robots.content = 'noindex, nofollow'
-    document.title = 'LLMOps Dashboard | santifer.io'
+    document.title = `LLMOps Dashboard | ${PROFILE.name}`
     // Force dark mode via CSS variables (works regardless of OS preference)
     const style = document.createElement('style')
     style.id = 'ops-dark-theme'
@@ -96,7 +97,7 @@ export default function OpsDashboard() {
           <div className="flex items-center justify-between sm:block">
             <div>
               <h1 className="text-lg sm:text-xl font-display font-bold text-foreground">LLMOps Dashboard</h1>
-              <p className="text-xs sm:text-sm text-muted-foreground">santifer.io</p>
+              <p className="text-xs sm:text-sm text-muted-foreground">{PROFILE.name}</p>
             </div>
             <button
               onClick={logout}
@@ -178,7 +179,6 @@ function OverviewTab({ stats, loading }: TabProps) {
     { name: 'Text', value: totals.textConversations },
     { name: 'Voice', value: totals.voiceConversations },
   ]
-  const langData = Object.entries(distributions.languages).map(([name, value]) => ({ name, value }))
   const ragData = [
     { name: 'RAG', value: distributions.ragActivation.yes },
     { name: 'No RAG', value: distributions.ragActivation.no },
@@ -245,7 +245,7 @@ function OverviewTab({ stats, loading }: TabProps) {
       </div>
 
       {/* Donuts row */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-2 sm:gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-2 sm:gap-4">
         <ChartCard title="Mode">
           <MetricChart
             data={modeData}
@@ -254,18 +254,6 @@ function OverviewTab({ stats, loading }: TabProps) {
             series={[
               { key: 'value', color: 'hsl(var(--primary))', label: 'Text' },
               { key: 'value', color: 'hsl(var(--accent))', label: 'Voice' },
-            ]}
-            height={200}
-          />
-        </ChartCard>
-        <ChartCard title="Language">
-          <MetricChart
-            data={langData}
-            type="donut"
-            xKey="name"
-            series={[
-              { key: 'value', color: 'hsl(var(--primary))', label: 'ES' },
-              { key: 'value', color: '#eab308', label: 'EN' },
             ]}
             height={200}
           />

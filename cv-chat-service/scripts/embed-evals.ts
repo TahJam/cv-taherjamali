@@ -5,7 +5,8 @@
  * to api/ops/_eval-results.json so the Edge function can import it.
  *
  * Run: npx tsx scripts/embed-evals.ts
- * Called automatically during `npm run build`.
+ * Not currently wired into any npm script or build step — run manually after
+ * `npm run evals` to refresh the dashboard's Evals tab data.
  */
 
 import * as fs from 'fs'
@@ -87,7 +88,11 @@ function parseReport(content: string): EvalResults {
 
   // Parse Detailed Results to get individual test results
   // Format: #### emoji testId
-  const detailedSections = content.split(/### (.+)\n/)
+  // Anchored to exactly three hashes at line start (multiline) — a naive
+  // /### (.+)\n/ also matches four-hash test headers (#### is a superset of
+  // ### as a substring), which truncates every category's section right
+  // before its first test and makes per-test parsing (and failedTests) empty.
+  const detailedSections = content.split(/^### (.+)$/m)
   let currentCatName = ''
 
   for (let i = 1; i < detailedSections.length; i += 2) {

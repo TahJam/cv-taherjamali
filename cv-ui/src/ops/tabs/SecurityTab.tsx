@@ -148,11 +148,6 @@ export default function SecurityTab({ stats, loading }: TabProps) {
                   key={trace.id}
                   className="flex items-start gap-3 py-2 border-b border-white/[0.06] last:border-0"
                 >
-                  <div className="shrink-0 mt-0.5">
-                    <span className="text-[10px] bg-red-500/20 text-red-400 px-1.5 py-0.5 rounded-full">
-                      {trace.metadata?.lang?.toUpperCase() ?? '??'}
-                    </span>
-                  </div>
                   <div className="flex-1 min-w-0">
                     <p className="text-sm text-foreground truncate">
                       {trace.metadata?.lastUserMessage || 'No preview'}

@@ -62,7 +62,8 @@ widget works out of the box once both are running.
 `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, and `CHAT_SERVICE_SECRET` — see
 `cv-chat-service/.env.local.example`. `cv-ui` needs `CHAT_SERVICE_URL` and the same `CHAT_SERVICE_SECRET` —
 see `cv-ui/.env.local.example`. `LANGFUSE_*`/`RESEND_API_KEY` are optional (tracing and jailbreak alerts; the
-chat pipeline degrades gracefully without them).
+chat pipeline degrades gracefully without them). To use the `/ops` dashboard locally, also set
+`OPS_DASHBOARD_SECRET` (its login password), `CRON_SECRET`, and `ALERT_EMAIL` in `cv-chat-service/.env.local`.
 
 ---
 
@@ -80,18 +81,21 @@ cv-ui/                           # Vercel Project 1 — the site
 │   ├── App.tsx                  # The entire homepage — hero, experience, projects, education, skills, contact
 │   ├── cv-data.ts                # Single source of truth for homepage content — edit here, not App.tsx
 │   ├── GlobalNav.tsx              # Theme toggle (minimal — no multi-page nav yet)
-│   ├── main.tsx                   # Routes: / (App), /ops (dormant dashboard), catch-all 404
+│   ├── main.tsx                   # Routes: / (App), /ops (live LLMOps dashboard), catch-all 404
 │   ├── FloatingChat.tsx            # Live chat widget — TJ persona, text-only
 │   ├── articles/registry.ts        # Case-study registry — emptied of Santiago's, type shape kept for mine
-│   ├── useVoiceMode.ts, VoiceOrb.tsx    # Dormant voice-mode UI — Phase 5
-│   └── ops/                              # Dormant LLMOps dashboard frontend — Phase 5
-├── api/chat.js                    # Thin proxy only — forwards to cv-chat-service with the shared secret
+│   ├── useVoiceMode.ts, VoiceOrb.tsx    # Dormant voice-mode UI — Phase 5b
+│   └── ops/                              # Live LLMOps dashboard frontend — Phase 5a
+├── api/chat.js                    # Thin proxy — forwards to cv-chat-service with the shared secret
+├── api/ops/[...path].js            # Thin proxy — forwards /api/ops/* to cv-chat-service, no secret injection
 └── vite.config.ts                  # Dev-only /api/* proxy to the local chat-service adapter
 
 cv-chat-service/                 # Vercel Project 2 — everything AI/chat
 ├── api/
 │   ├── chat.js, _shared/rag.js, _shared/prompt.js    # Live chatbot + RAG pipeline
-│   └── ops/, voice-*.js, cron/                         # Dormant — Phase 5, moved here since same concern
+│   ├── _shared/evaluator.js                            # Shared LLM-as-judge, used by cron + manual script
+│   ├── ops/, cron/                                       # Live LLMOps dashboard API — Phase 5a
+│   └── voice-*.js                                          # Dormant — Phase 5b
 ├── chatbot-prompt.txt              # TJ's system prompt
 ├── scripts/                         # RAG content pipeline (export-chunks, ingest-rag) + dev-server.mjs adapter
 └── evals/                            # 50 active tests across 8 categories, rewritten for Taher/TJ — Phase 4

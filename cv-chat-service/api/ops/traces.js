@@ -11,7 +11,6 @@ export default async function handler(req) {
     const days = parseInt(url.searchParams.get('days') || '7', 10)
     const limit = parseInt(url.searchParams.get('limit') || '50', 10)
     const offset = parseInt(url.searchParams.get('offset') || '0', 10)
-    const lang = url.searchParams.get('lang')       // "es" or "en"
     const mode = url.searchParams.get('mode')       // "text" or "voice"
     const rag = url.searchParams.get('rag')         // "yes" or "no"
     const jailbreak = url.searchParams.get('jailbreak') // "true"
@@ -32,7 +31,6 @@ export default async function handler(req) {
 
     // Tag filters
     const tagFilters = []
-    if (lang) tagFilters.push(lang)
     if (mode === 'voice') tagFilters.push('voice')
     if (rag) tagFilters.push(`rag:${rag}`)
     if (jailbreak === 'true') tagFilters.push('jailbreak-attempt')
@@ -86,9 +84,7 @@ export default async function handler(req) {
     }
 
     const data = filtered.map(t => {
-      // Detect lang from tags
       const tags = t.tags || []
-      const lang = tags.includes('es') ? 'es' : tags.includes('en') ? 'en' : undefined
 
       return {
         id: t.id,
@@ -96,7 +92,6 @@ export default async function handler(req) {
         name: t.name,
         tags,
         metadata: {
-          lang,
           lastUserMessage: t.metadata?.lastUserMessage || summarizeInput(t.input),
           messageCount: t.metadata?.messageCount,
           cost: t.metadata?.cost,

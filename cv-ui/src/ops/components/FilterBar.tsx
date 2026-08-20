@@ -24,16 +24,6 @@ export default function FilterBar({ filters, onChange }: FilterBarProps) {
       </select>
 
       <select
-        value={filters.lang ?? ''}
-        onChange={e => set({ lang: e.target.value || undefined })}
-        className={selectClass}
-      >
-        <option value="">All langs</option>
-        <option value="es">ES</option>
-        <option value="en">EN</option>
-      </select>
-
-      <select
         value={filters.mode ?? ''}
         onChange={e => set({ mode: e.target.value || undefined })}
         className={selectClass}
