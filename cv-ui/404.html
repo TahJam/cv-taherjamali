@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en" class="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+    <!-- Font Preloads (self-hosted, eliminates Google Fonts CDN) -->
+    <link rel="preload" href="/fonts/space-grotesk-latin.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href="/fonts/dm-sans-latin.woff2" as="font" type="font/woff2" crossorigin />
+
+    <!-- Primary Meta Tags -->
+    <title>404 — Page not found | Taher Jamali</title>
+    <meta name="title" content="404 — Page not found | Taher Jamali" />
+    <meta name="description" content="Page not found." />
+    <meta name="author" content="Taher Jamali" />
+    <meta name="robots" content="noindex, nofollow" />
+
+    <!-- Theme & App -->
+    <meta name="theme-color" content="#0a0a0a" />
+    <meta name="color-scheme" content="dark" />
+    <meta name="msapplication-TileColor" content="#0a0a0a" />
+
+    <!-- Favicons -->
+    <link rel="icon" type="image/x-icon" href="/favicon.ico" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png" />
+    <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
+
+    <!-- Theme detection before first paint (eliminates dark→light FOUC) -->
+    <script>
+      (function(){var s=localStorage.getItem('theme');var d=s?s==='dark':window.matchMedia('(prefers-color-scheme:dark)').matches;var h=document.documentElement;h.classList.toggle('dark',d);h.classList.toggle('light',!d);var m=document.querySelector('meta[name="color-scheme"]');if(m)m.content=d?'dark':'light';var t=document.querySelector('meta[name="theme-color"]');if(t)t.content=d?'#0a0a0a':'#ffffff'})()
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

@@ -41,6 +41,16 @@ export default defineConfig(({ mode }) => {
       target: 'es2022',
       cssCodeSplit: true,
       rollupOptions: {
+        // Two HTML entries: index.html (the real app) and 404.html (same app
+        // shell, different meta/title). Vercel serves 404.html natively for
+        // any unmatched path with a real 404 status — the browser still runs
+        // its JS regardless of status code, so React Router boots up and
+        // renders client-side-only routes (like /ops) correctly. No
+        // vercel.json rewrite needed. See docs/plans/phase-5a-ops-dashboard.md.
+        input: {
+          main: 'index.html',
+          notFound: '404.html',
+        },
         output: {
           manualChunks(id: string) {
             if (id.includes('node_modules')) {
