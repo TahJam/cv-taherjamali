@@ -379,3 +379,38 @@ job as commit 1:
 3. **Regenerate real eval data** — as planned.
 4. **Dashboard content + env provisioning** — as planned.
 5. **Docs** — this update.
+
+## 7. Post-deploy addendum: `/ops` 404'd in production despite "full" local verification
+
+Found after deploying — direct navigation to `/ops` (typing the URL, not clicking an in-app link) returned a
+real 404 in production, even though every check in §6 passed locally. Root cause: `cv-ui` is a pure
+client-side-routed SPA — `/ops` only exists as a React Router route, never as a literal file. Vite's dev
+server auto-falls-back unmatched paths to `index.html`, masking this completely in local dev; nothing
+equivalent existed for the production static build. This is a gap in the Investigate/Plan/Test process
+itself, not just the implementation — local dev and production diverge here in a way none of the local
+testing (however thorough) could have caught, since the dev server's fallback behavior isn't something
+`vercel.json` or the build config controls at all.
+
+**Root-caused by comparing against the live `santifer.io`**, not by guessing: curled `/ops` there and got an
+identical, cacheable 404 to a made-up path — ruling out a `vercel.json` rewrite or service worker. Diffing the
+404 response body against the real homepage showed both load the *exact same* hashed JS bundle
+(`index-DBkkLcyB.js`) — meaning Santiago's `404.html` is a real, separate file (own `<title>`, `noindex`
+meta) that happens to boot the identical app. That's Vercel's native static-hosting convention: a `404.html`
+at the build root gets served automatically (with a genuine 404 status) for any unmatched path. Browsers
+execute the JS in a response regardless of its HTTP status, so React Router boots normally and renders
+`/ops` correctly from `window.location` — while crawlers and network-tab status codes correctly still see 404.
+Chosen over a `vercel.json` catch-all rewrite (`/(.*)  → /index.html`) specifically because that would return
+`200` for genuinely nonexistent paths too (a "soft 404," worse for SEO) — this preserves real 404 semantics.
+
+**Fix:** `cv-ui/404.html` (new) — same app shell as `index.html` (`<div id="root">`,
+`<script type="module" src="/src/main.tsx">`), with its own 404-appropriate `<title>`/`<meta name="robots"
+content="noindex, nofollow">` instead of the real page's indexable meta. `cv-ui/vite.config.ts`'s
+`build.rollupOptions.input` now lists both `index.html` and `404.html` as entries, so Vite's build pipeline
+processes both (correct hashed asset references in each) rather than only the default single entry. No
+`vercel.json` change needed — this is a build-output convention Vercel already honors natively.
+
+**Verified:** a real `npm run build` produces `dist/404.html` with byte-identical `<script>` bundle references
+to `dist/index.html`, and the correct 404-specific title/meta. `vite preview` could **not** validate the actual
+Vercel-specific serving behavior (it has its own generic SPA-fallback logic, unrelated to the `404.html`
+convention, and returned `200` for everything regardless) — final confirmation that `/ops` actually resolves
+requires an actual deploy, the same local/production gap this whole addendum is about.
