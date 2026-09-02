@@ -48,7 +48,7 @@ These apply across all phases; don't relitigate them without a reason:
 | 3 | Service Split — Isolate the Chat/AI Backend | ✅ Done |
 | 4 | Evals + Prompt-Injection Defense | ✅ Done |
 | 5a | `/ops` LLMOps Dashboard | ✅ Done |
-| 5b | Voice Mode | Not started |
+| 5b | Voice Mode | 🔍 Investigate done — Plan not started |
 
 ---
 
@@ -295,25 +295,53 @@ Full investigate/plan/test/implement writeup: **[`docs/plans/phase-5a-ops-dashbo
 
 ### Phase 5b — Voice Mode
 
-Not started — Investigate hasn't begun. Blocked behind a research question, not just implementation: does
-Google's Live API support the same ephemeral-token/direct-browser-WebSocket pattern `useVoiceMode.ts`
-currently uses with OpenAI's Realtime API? If not, this isn't a provider swap, it's a different architecture
-(e.g., proxying audio through the backend instead of a direct client connection) — that has to be answered
-before planning, not assumed.
+Investigate ✅ done (2026-09-02) — Plan not started. Findings:
+**[`docs/plans/phase-5b-voice-mode.md`](phase-5b-voice-mode.md)**.
 
-**Existing scaffolding (dormant):** `cv-ui/src/useVoiceMode.ts` (~800 lines, OpenAI-Realtime-specific,
-structurally bilingual — `VOICE_AFFECT_ES`/`EN`, `lang` threaded through every function, same category of
-surgery Phase 2 did on `i18n.ts`, not a find-replace), `cv-chat-service/api/voice-token.js` (mints OpenAI
-ephemeral tokens, 100% Santiago/Jacobo persona prompt in Spanish), `cv-chat-service/api/voice-trace.js`
-(Langfuse cost tracking, OpenAI-specific pricing constants, otherwise generic/reusable). `VoiceOrb.tsx` and
-`useAudioAnalyser.ts` are pure presentational/generic — fully reusable regardless of provider. `api/rag-search.js`
-(the `search_portfolio` tool backend for voice) already reuses `_shared/rag.js` and is architecture-agnostic.
+**The blocking research question is answered: it's a provider swap, not an architecture change.** Google's
+Live API does support the same ephemeral-token / direct-browser-WebSocket pattern `useVoiceMode.ts` uses with
+OpenAI — backend mints a short-lived token, the browser holds the socket directly, no audio proxied through
+`cv-chat-service`. Two things actually improve: the token goes in an ordinary `?access_token=` query param
+instead of OpenAI's WebSocket-subprotocol hack, and `liveConnectConstraints` can lock the model, system
+instruction, and tools into the token server-side, removing the client-sends-`session.update` surface.
 
-**Rough scope (detail goes in `phase-5b-voice-mode.md` when this starts):**
-- Research Google Live API's client-connection model first, before planning anything else.
+What the phase actually costs, now that it's been audited:
+- **A full rewrite of `handleRealtimeEvent`** — every protocol event name differs, and Google's turn model
+  isn't OpenAI's (server-signalled `interrupted`, a `toolCallCancellation` message with no current
+  equivalent). Not a shim.
+- **An asymmetric audio-rate fix** — Live API is 16 kHz in / 24 kHz out; the current code hardcodes 24 kHz on
+  both sides in five places. Constant changes, not new DSP, but the two rates must stop being the same literal.
+- **Two production-only gaps to fix up front**, both already identified rather than discovered post-deploy:
+  `cv-ui/` has no proxy route for `/api/voice-*` or `/api/rag-search` (same 404 class as `/api/ops/*` before
+  Phase 5a), and `cv-ui/vercel.json`'s CSP `connect-src` hardcodes `api.openai.com` — pointing the socket at
+  Google without updating it fails silently in prod and is invisible to local testing.
+- **A live bug in the dormant code**: `useVoiceMode.ts`'s `RagSource` still declares `page_path_en/_es` /
+  `article_slug_en/_es`, but `_shared/rag.js` has returned single-path fields since Phase 2 — voice source
+  badges read `undefined` today. "It works, it just speaks Spanish" is not accurate.
+
+**Existing scaffolding (dormant):** `cv-ui/src/useVoiceMode.ts` (~800 lines, OpenAI-Realtime-specific).
+Its bilingual coupling turned out **smaller** than estimated here before Investigate ran — `lang` is 14
+pass-through references that no logic reads, so deleting it is removing a parameter from a call chain, not
+`i18n.ts`-scale surgery. The real bilingual weight is prompt *text*:
+`cv-chat-service/api/voice-token.js` (mints OpenAI ephemeral tokens; `VOICE_AFFECT_ES`/`EN` plus a ~60-line
+all-Spanish `VOICE_BASE_PROMPT`, 100% Santiago persona) and one Spanish `VOICE_OVERRIDE` line in
+`api/rag-search.js`. `cv-chat-service/api/voice-trace.js` (Langfuse cost tracking) is OpenAI-specific only in
+its per-minute pricing constants — Gemini Live bills per token, so that becomes a different calculation;
+everything else in it is provider-agnostic. `VoiceOrb.tsx` and `useAudioAnalyser.ts` are pure
+presentational/generic — verified free of provider, language, and content coupling, fully reusable.
+`api/rag-search.js` already reuses `_shared/rag.js` and is architecture-agnostic.
+
+**Scope (detail in `phase-5b-voice-mode.md`):**
+- Rewrite `handleRealtimeEvent` and the connection setup against the Gemini Live protocol; fix the 16/24 kHz
+  audio-rate split.
 - Rewrite the persona prompt for TJ, in English only — strip the bilingual architecture, not just translate it.
+- Add `cv-ui/` proxy routes for `/api/voice-*` + `/api/rag-search`, and update `vercel.json`'s CSP
+  `connect-src` off `api.openai.com`.
 - Wire voice mode into `FloatingChat.tsx` (currently zero references — fully unwired).
-- Update voice cost tracking (`voice-trace.js`) for Google Live API's pricing model.
+- Update voice cost tracking (`voice-trace.js`) for Gemini Live's per-token pricing model.
+- Add the missing `voice_rate_limits` table to `scripts/supabase-setup.sql` (with RLS) — `checkRateLimit`
+  fails open today, so an absent table silently means no rate limiting at all.
+- Add `/api/voice-*` routes to `scripts/dev-server.mjs`, which also unblocks the 6 deferred `voice.json` evals.
 
 **Depends on:** Phase 2 (voice needs a working text chatbot underneath it), Phase 3 (this is where the service
 that hosts voice actually lives).
