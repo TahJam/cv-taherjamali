@@ -11,14 +11,18 @@
 // pattern as api/chat.js. See docs/plans/phase-5a-ops-dashboard.md.
 // ---------------------------------------------------------------------------
 
+import { createLogger } from '../_shared/logger.js'
+
 export const config = {
   runtime: 'edge',
 }
 
+const log = createLogger({ component: 'ui-proxy', path: '/api/ops' })
+
 export default async function handler(req) {
   const chatServiceUrl = process.env.CHAT_SERVICE_URL
   if (!chatServiceUrl) {
-    console.error('Proxy misconfigured: CHAT_SERVICE_URL missing')
+    log.error('proxy misconfigured: CHAT_SERVICE_URL missing')
     return new Response(JSON.stringify({ error: 'Error processing request' }), {
       status: 500,
       headers: { 'Content-Type': 'application/json' },
@@ -37,7 +41,7 @@ export default async function handler(req) {
       body: req.method === 'POST' ? await req.text() : undefined,
     })
   } catch (err) {
-    console.error('Proxy fetch to chat service failed:', err)
+    log.error({ err, upstream: url.pathname }, 'proxy fetch to chat service failed')
     return new Response(JSON.stringify({ error: 'Error processing request' }), {
       status: 502,
       headers: { 'Content-Type': 'application/json' },

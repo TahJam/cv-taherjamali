@@ -1,6 +1,9 @@
 import { Langfuse } from 'langfuse'
 import { waitUntil } from '@vercel/functions'
 import { classifyIntent, containsFingerprint, sendJailbreakAlert } from './_shared/rag.js'
+import { createLogger } from './_shared/logger.js'
+
+const log = createLogger({ route: '/api/voice-trace' })
 
 export const config = {
   runtime: 'edge',
@@ -23,8 +26,19 @@ export default async function handler(req) {
     return new Response('Method not allowed', { status: 405 })
   }
 
+  // Shared-secret gate, same as api/chat.js. Reached via cv-ui/api/voice-trace.js,
+  // which attaches the secret server-side; the browser never holds it.
+  const authHeader = req.headers.get('authorization')
+  const expected = `Bearer ${process.env.CHAT_SERVICE_SECRET}`
+  if (!process.env.CHAT_SERVICE_SECRET || authHeader !== expected) {
+    return new Response(JSON.stringify({ error: 'Unauthorized' }), {
+      status: 401,
+      headers: { 'Content-Type': 'application/json' },
+    })
+  }
+
   try {
-    const { traceId, sessionId, transcript = [], durationMs, lang } = await req.json()
+    const { traceId, sessionId, transcript = [], durationMs, usage = null } = await req.json()
 
     if (!traceId) {
       return new Response(JSON.stringify({ error: 'Missing traceId' }), {
@@ -42,7 +56,7 @@ export default async function handler(req) {
 
     // Classify intent from all user messages
     const userMessages = transcript.filter(t => t.role === 'user').map(t => t.text)
-    const allTags = new Set(['voice', lang])
+    const allTags = new Set(['voice'])
     let jailbreakDetected = false
 
     for (const msg of userMessages) {
@@ -62,15 +76,43 @@ export default async function handler(req) {
       }
     }
 
-    // Estimate voice costs (OpenAI Realtime API pricing)
-    // ~$0.06/min input audio, ~$0.24/min output audio
-    // Estimate 40/60 split user/assistant based on message counts
-    const durationMin = (durationMs || 0) / 60000
-    const userRatio = transcript.length > 0
-      ? userMessages.length / transcript.length
-      : 0.4
-    const audioInputCost = durationMin * userRatio * 0.06
-    const audioOutputCost = durationMin * (1 - userRatio) * 0.24
+    // -----------------------------------------------------------------------
+    // Cost — Gemini Live API (gemini-3.1-flash-live-preview), per 1M tokens:
+    //   text in $0.75 · audio in $3.00 · text out $4.50 · audio out $12.00
+    // Per-minute equivalents (used only for the fallback): $0.005/min audio in,
+    // $0.018/min audio out.
+    //
+    // Prefer the exact per-modality token counts the API reports via
+    // usageMetadata, forwarded by the client. That message is NOT guaranteed to
+    // arrive before a session ends (Phase 5b Test stage), so fall back to a
+    // duration estimate rather than recording zero cost for short or abandoned
+    // sessions.
+    // -----------------------------------------------------------------------
+    const M = 1_000_000
+    const PRICE = { textIn: 0.75, audioIn: 3.00, textOut: 4.50, audioOut: 12.00 }
+    const PER_MIN = { audioIn: 0.005, audioOut: 0.018 }
+
+    let audioInputCost, audioOutputCost, costSource
+
+    if (usage && (usage.inputTokens || usage.outputTokens)) {
+      const audioIn = usage.audioInputTokens || 0
+      const audioOut = usage.audioOutputTokens || 0
+      const textIn = Math.max(0, (usage.inputTokens || 0) - audioIn)
+      const textOut = Math.max(0, (usage.outputTokens || 0) - audioOut)
+
+      audioInputCost = (textIn * PRICE.textIn + audioIn * PRICE.audioIn) / M
+      audioOutputCost = (textOut * PRICE.textOut + audioOut * PRICE.audioOut) / M
+      costSource = 'usage_metadata'
+    } else {
+      const durationMin = (durationMs || 0) / 60000
+      const userRatio = transcript.length > 0
+        ? userMessages.length / transcript.length
+        : 0.4
+      audioInputCost = durationMin * userRatio * PER_MIN.audioIn
+      audioOutputCost = durationMin * (1 - userRatio) * PER_MIN.audioOut
+      costSource = 'duration_estimate'
+    }
+
     const voiceTotalCost = audioInputCost + audioOutputCost
 
     // Update trace with transcript and metadata
@@ -84,6 +126,8 @@ export default async function handler(req) {
         userMessageCount: userMessages.length,
         jailbreakDetected,
         leakDetected,
+        costSource,
+        usage: usage || undefined,
         cost: {
           audioInput: audioInputCost,
           audioOutput: audioOutputCost,
@@ -115,7 +159,7 @@ export default async function handler(req) {
       headers: { 'Content-Type': 'application/json' },
     })
   } catch (error) {
-    console.error('Voice trace error:', error)
+    log.error({ err: error }, 'voice trace request failed')
     return new Response(JSON.stringify({ error: 'Internal server error' }), {
       status: 500,
       headers: { 'Content-Type': 'application/json' },

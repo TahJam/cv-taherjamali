@@ -8,6 +8,12 @@
 import { Langfuse } from 'langfuse'
 import { Resend } from 'resend'
 import { evaluateTrace } from '../_shared/evaluator.js'
+// Real Pino: this is the one handler on `runtime: 'nodejs'`, so Node built-ins
+// are available. Every other handler in this service is Edge and uses
+// ../_shared/logger.js instead.
+import { createLogger } from '../_shared/logger.node.js'
+
+const log = createLogger({ service: 'cv-chat-service', job: 'cron-evaluate' })
 
 export const config = {
   runtime: 'nodejs',
@@ -65,13 +71,17 @@ export default async function handler(req) {
 
   const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null
 
+  const startedAt = Date.now()
   const since = new Date(Date.now() - 24 * 60 * 60 * 1000)
   const results = { evaluated: 0, jailbreaks: 0, lowSafety: 0, errors: 0 }
   const alerts = []
 
+  log.info({ since: since.toISOString(), emailConfigured: !!resend }, 'evaluation run started')
+
   try {
     const traces = await langfuse.fetchTraces({ limit: 50 })
     const recentTraces = traces.data.filter(t => new Date(t.timestamp) > since)
+    log.info({ fetched: traces.data.length, recent: recentTraces.length }, 'traces fetched')
 
     for (const trace of recentTraces) {
       try {
@@ -90,7 +100,11 @@ export default async function handler(req) {
         let result
         try {
           result = await evaluateTrace(userMessage, assistantResponse)
-        } catch {
+        } catch (err) {
+          // Previously a silent `continue` — a judge outage looked identical
+          // to "nothing needed scoring".
+          log.warn({ traceId: trace.id, err }, 'judge evaluation failed, skipping trace')
+          results.errors++
           continue
         }
 
@@ -102,6 +116,7 @@ export default async function handler(req) {
         if (result.is_jailbreak_attempt) {
           langfuse.score({ traceId: trace.id, name: 'jailbreak_attempt', value: 1 })
           results.jailbreaks++
+          log.warn({ traceId: trace.id, intent: result.intent_category }, 'jailbreak attempt detected')
           alerts.push({
             traceId: trace.id,
             type: '🚨 Jailbreak',
@@ -112,6 +127,7 @@ export default async function handler(req) {
 
         if (result.safety_score < 0.5) {
           results.lowSafety++
+          log.warn({ traceId: trace.id, safetyScore: result.safety_score }, 'low safety score')
           alerts.push({
             traceId: trace.id,
             type: '⚠️ Low Safety',
@@ -121,7 +137,8 @@ export default async function handler(req) {
         }
 
         results.evaluated++
-      } catch (e) {
+      } catch (err) {
+        log.error({ traceId: trace.id, err }, 'trace processing failed')
         results.errors++
       }
     }
@@ -130,7 +147,16 @@ export default async function handler(req) {
 
     // Send email if there are alerts
     if (alerts.length > 0 && resend) {
-      await sendAlertEmail(resend, alerts)
+      try {
+        await sendAlertEmail(resend, alerts)
+        log.info({ alerts: alerts.length, to: process.env.ALERT_EMAIL }, 'alert email sent')
+      } catch (err) {
+        // Was unguarded: a Resend failure took down the whole run AFTER the
+        // scoring work was already done, losing the summary entirely.
+        log.error({ alerts: alerts.length, err }, 'alert email failed to send')
+      }
+    } else if (alerts.length > 0) {
+      log.warn({ alerts: alerts.length }, 'alerts raised but no email configured (RESEND_API_KEY/ALERT_EMAIL)')
     }
 
     // Count low-quality traces (quality < 0.7) for monitoring
@@ -143,8 +169,16 @@ export default async function handler(req) {
         if (qualityScore && typeof qualityScore.value === 'number' && qualityScore.value < 0.7) {
           lowQualityCount++
         }
-      } catch { /* skip */ }
+      } catch (err) {
+        log.debug({ traceId: trace.id, err }, 'quality score lookup failed')
+      }
     }
+
+    log.info(
+      { ...results, tracesChecked: recentTraces.length, alertsSent: alerts.length,
+        lowQualityTraces: lowQualityCount, ms: Date.now() - startedAt },
+      'evaluation run complete',
+    )
 
     return Response.json({
       success: true,
@@ -154,6 +188,7 @@ export default async function handler(req) {
       lowQualityTraces: lowQualityCount,
     })
   } catch (error) {
+    log.error({ err: error, ...results, ms: Date.now() - startedAt }, 'evaluation run failed')
     return Response.json({ success: false, error: error.message }, { status: 500 })
   }
 }

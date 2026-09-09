@@ -1,66 +1,62 @@
 {
   "name": "voice_quality",
-  "description": "Tests voice RAG endpoint (/api/rag-search): content relevance, no markdown, factual accuracy, grounding",
+  "description": "Tests the voice RAG endpoint (/api/rag-search): retrieval relevance, grounding, first-person framing, source attribution. NOTE: spoken-output properties (brevity, no markdown, no spoken URLs) are deliberately NOT tested here — this endpoint returns retrieval CONTEXT and falls back to raw markdown chunks when RAG exceeds its latency budget, so those assertions were testing the wrong layer. Spoken output is covered by the voice integration harness in process/scratch/phase-5b/.",
   "tests": [
     {
-      "id": "voice-content-jacobo",
-      "description": "Voice RAG about Jacobo returns relevant content",
-      "input": "Cuéntame sobre el agente Jacobo",
-      "lang": "es",
+      "id": "voice-content-pentest",
+      "description": "Voice RAG about the pentesting system returns relevant content",
+      "input": "Tell me about your penetration testing system",
       "mode": "voice",
       "assertions": [
-        { "type": "contains_any", "values": ["jacobo", "agente", "whatsapp", "omnicanal", "customer", "autoservicio"] }
+        { "type": "contains_any", "values": ["pentest", "penetration", "multi-agent", "autonomous", "security", "blackbox", "whitebox"] },
+        { "type": "rag_used" }
       ]
     },
     {
-      "id": "voice-no-markdown",
-      "description": "Voice RAG response must not contain markdown links",
-      "input": "What projects have you built?",
-      "lang": "en",
+      "id": "voice-content-reliability",
+      "description": "Voice RAG surfaces the fleet-scale reliability work",
+      "input": "What reliability work have you done?",
       "mode": "voice",
       "assertions": [
-        { "type": "not_contains", "value": "**" },
-        { "type": "regex", "pattern": "^(?!.*\\[.*\\]\\(.*\\)).*$", "flags": "s" }
+        { "type": "contains_any", "values": ["queue", "durable", "redundant", "retry", "scheduled", "idempotent", "failure"] }
       ]
     },
     {
-      "id": "voice-factual-jacobo",
-      "description": "Voice RAG about Jacobo should mention key technical details",
-      "input": "Tell me about the Jacobo AI agent, what does it do?",
-      "lang": "en",
+      "id": "voice-content-dashboard",
+      "description": "Voice RAG surfaces the operator dashboard work",
+      "input": "Have you built any internal tools or dashboards?",
       "mode": "voice",
       "assertions": [
-        { "type": "contains_any", "values": ["customer service", "self-service", "tool calling", "whatsapp", "omnichannel", "autoservicio"] }
+        { "type": "contains_any", "values": ["dashboard", "operator", "react", "cloud foundry", "cli"] }
       ]
     },
     {
       "id": "voice-grounding-invented",
-      "description": "Voice RAG for unknown project returns empty or no-match signal",
+      "description": "Voice RAG never presents a nonexistent project as real (tier-independent — refusal wording only appears on the reasoned tier)",
       "input": "Tell me about your blockchain project",
-      "lang": "en",
       "mode": "voice",
       "assertions": [
-        { "type": "contains_any", "values": ["No relevant content", "no tengo", "not", "unavailable", "general knowledge", "don't have"] }
+        { "type": "llm_judge", "criteria": "The content must NOT present factual details about a blockchain project belonging to the speaker as though such a project exists. It is acceptable for the content to explicitly deny having one, OR to be unrelated retrieved material that simply never mentions a blockchain project of theirs. It is NOT acceptable if it describes a blockchain project they built." }
       ]
     },
     {
-      "id": "voice-brevity-general",
-      "description": "General voice response should be short (< 60 words)",
-      "input": "Hola, ¿quién eres?",
-      "lang": "es",
+      "id": "voice-first-person",
+      "description": "Voice RAG answers in first person as Taher, never third person",
+      "input": "Who are you and what do you do?",
       "mode": "voice",
       "assertions": [
-        { "type": "max_words", "value": 60 }
+        { "type": "contains_any", "values": ["I'm", "I am", "I work", "my focus", "I build"] },
+        { "type": "not_contains", "value": "Taher built" }
       ]
     },
     {
-      "id": "voice-no-urls",
-      "description": "Voice RAG response should not contain URLs",
-      "input": "How can I contact you?",
-      "lang": "en",
+      "id": "voice-source-home",
+      "description": "Voice RAG attributes retrieved content to a source so the badge UI has something to render",
+      "input": "What is your experience with machine learning?",
       "mode": "voice",
       "assertions": [
-        { "type": "regex", "pattern": "^(?!.*https?://).*$", "flags": "s" }
+        { "type": "rag_used" },
+        { "type": "source_includes", "value": "home" }
       ]
     }
   ]

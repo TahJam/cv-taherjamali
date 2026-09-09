@@ -5,6 +5,9 @@ import {
   filterSourcesByResponse, detectMentionedArticles, HOME_SOURCE,
 } from './_shared/rag.js'
 import { getSystemPrompt } from './_shared/prompt.js'
+import { createLogger } from './_shared/logger.js'
+
+const log = createLogger({ route: '/api/rag-search' })
 
 export const config = {
   runtime: 'edge',
@@ -30,7 +33,7 @@ function getLangfuse() {
 // Claude reasoning layer — turns raw RAG chunks into a verified answer
 // ---------------------------------------------------------------------------
 
-const VOICE_OVERRIDE = `Respuesta para conversación hablada. Max 2-3 frases. Sin markdown ni links. Lenguaje natural hablado. Sé preciso con datos del contexto — nunca inventes. SIEMPRE habla en PRIMERA PERSONA como Santiago — nunca en tercera persona ("Santiago hizo..."), sino "Yo hice...", "Construí...", "Mi proyecto...".`
+const VOICE_OVERRIDE = `Answer for a SPOKEN conversation. Max 2-3 short sentences. No markdown, no links, no lists — natural spoken language only. Be precise with figures from the context and NEVER invent one. ALWAYS speak in FIRST PERSON as Taher — never third person ("Taher built...") but "I built...", "My project...".`
 
 async function reasonWithClaude(query, formattedChunks, span, langfuse) {
   const t0 = Date.now()
@@ -100,6 +103,17 @@ async function reasonWithClaude(query, formattedChunks, span, langfuse) {
 export default async function handler(req) {
   if (req.method !== 'POST') {
     return new Response('Method not allowed', { status: 405 })
+  }
+
+  // Shared-secret gate, same as api/chat.js. Before Phase 5b this endpoint was
+  // unauthenticated despite billing Anthropic + Gemini + Supabase on every call.
+  const authHeader = req.headers.get('authorization')
+  const expected = `Bearer ${process.env.CHAT_SERVICE_SECRET}`
+  if (!process.env.CHAT_SERVICE_SECRET || authHeader !== expected) {
+    return new Response(JSON.stringify({ error: 'Unauthorized' }), {
+      status: 401,
+      headers: { 'Content-Type': 'application/json' },
+    })
   }
 
   try {
@@ -195,7 +209,7 @@ export default async function handler(req) {
       })
     }
   } catch (error) {
-    console.error('RAG search error:', error)
+    log.error({ err: error }, 'rag search failed')
     return new Response(JSON.stringify({ error: 'Internal server error' }), {
       status: 500,
       headers: { 'Content-Type': 'application/json' },

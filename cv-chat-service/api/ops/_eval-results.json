@@ -1,9 +1,9 @@
 {
-  "date": "2026-08-18T20:43:54",
-  "passRate": 0.8928571428571429,
+  "date": "2026-09-09T19:35:31",
+  "passRate": 0.9821428571428571,
   "totalTests": 56,
-  "passed": 50,
-  "failed": 6,
+  "passed": 55,
+  "failed": 1,
   "categories": [
     {
       "name": "boundary_testing",
@@ -38,8 +38,8 @@
     {
       "name": "rag_quality",
       "total": 8,
-      "passed": 8,
-      "passRate": 1
+      "passed": 7,
+      "passRate": 0.88
     },
     {
       "name": "safety_jailbreak",
@@ -56,40 +56,15 @@
     {
       "name": "voice_quality",
       "total": 6,
-      "passed": 0,
-      "passRate": 0
+      "passed": 6,
+      "passRate": 1
     }
   ],
   "failedTests": [
     {
-      "name": "voice-content-jacobo",
-      "category": "voice_quality",
-      "reason": "Assertion failed"
-    },
-    {
-      "name": "voice-no-markdown",
-      "category": "voice_quality",
-      "reason": "Assertion failed"
-    },
-    {
-      "name": "voice-factual-jacobo",
-      "category": "voice_quality",
-      "reason": "Assertion failed"
-    },
-    {
-      "name": "voice-grounding-invented",
-      "category": "voice_quality",
-      "reason": "Assertion failed"
-    },
-    {
-      "name": "voice-brevity-general",
-      "category": "voice_quality",
-      "reason": "Assertion failed"
-    },
-    {
-      "name": "voice-no-urls",
-      "category": "voice_quality",
-      "reason": "Assertion failed"
+      "name": "retrieval-pentest-detail",
+      "category": "rag_quality",
+      "reason": "Missing all of: blackbox, whitebox, Python, Claude, Gemini"
     }
   ]
 }

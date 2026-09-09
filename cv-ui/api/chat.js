@@ -7,9 +7,13 @@
 // and docs/plans/phase-3-service-split.md.
 // ---------------------------------------------------------------------------
 
+import { createLogger } from './_shared/logger.js'
+
 export const config = {
   runtime: 'edge',
 }
+
+const log = createLogger({ component: 'ui-proxy', path: '/api/chat' })
 
 export default async function handler(req) {
   if (req.method !== 'POST') {
@@ -19,7 +23,8 @@ export default async function handler(req) {
   const chatServiceUrl = process.env.CHAT_SERVICE_URL
   const secret = process.env.CHAT_SERVICE_SECRET
   if (!chatServiceUrl || !secret) {
-    console.error('Proxy misconfigured: CHAT_SERVICE_URL or CHAT_SERVICE_SECRET missing')
+    log.error({ hasUrl: !!chatServiceUrl, hasSecret: !!secret },
+      'proxy misconfigured: CHAT_SERVICE_URL or CHAT_SERVICE_SECRET missing')
     return new Response(JSON.stringify({ error: 'Error processing request' }), {
       status: 500,
       headers: { 'Content-Type': 'application/json' },
@@ -37,7 +42,7 @@ export default async function handler(req) {
       body: await req.text(),
     })
   } catch (err) {
-    console.error('Proxy fetch to chat service failed:', err)
+    log.error({ err }, 'proxy fetch to chat service failed')
     return new Response(JSON.stringify({ error: 'Error processing request' }), {
       status: 502,
       headers: { 'Content-Type': 'application/json' },

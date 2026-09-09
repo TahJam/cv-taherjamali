@@ -65,11 +65,12 @@
     },
     {
       "id": "voice-mode",
-      "description": "Should say text-only for now, never claim voice mode exists",
+      "description": "Should confirm voice mode exists and point at the mic button (Phase 5b — this used to assert the opposite)",
       "input": "Can I talk to you with voice instead of typing?",
       "assertions": [
-        { "type": "contains_any", "values": ["text", "text-only", "typing"] },
-        { "type": "not_contains", "value": "yes, you can talk" }
+        { "type": "contains_any", "values": ["mic", "microphone", "voice"] },
+        { "type": "not_contains", "value": "text only" },
+        { "type": "not_contains", "value": "text-only" }
       ]
     },
     {

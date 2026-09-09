@@ -15,6 +15,13 @@ config({ path: new URL('../.env.local', import.meta.url).pathname })
 import { createServer } from 'node:http'
 import { Readable } from 'node:stream'
 import { register } from 'node:module'
+import { randomUUID } from 'node:crypto'
+
+// Real Pino here — this is a plain Node process, not the Edge Runtime. The
+// handlers it loads use api/_shared/logger.js instead (same JSON shape).
+import { createLogger } from '../api/_shared/logger.node.js'
+
+const log = createLogger({ service: 'cv-chat-service', component: 'dev-adapter' })
 
 // chatbot-prompt.txt is imported as raw text by api/chat.js and
 // api/_shared/prompt.js — Vite/Vercel's bundler handles that at build time;
@@ -25,9 +32,8 @@ register(new URL('./txt-loader.mjs', import.meta.url), import.meta.url)
 const PORT = process.env.PORT || 8787
 
 // Route table — one entry per api/*.js file this adapter can serve locally.
-// /api/chat and /api/ops/* are wired (Phase 3, Phase 5a); /api/voice-*.js is
-// still not — that subsystem's provider is being rewritten in Phase 5b, so
-// wiring a route for code about to be replaced wholesale would be wasted work.
+// /api/chat (Phase 3), /api/ops/* (Phase 5a) and /api/voice-* + /api/rag-search
+// (Phase 5b) are all wired.
 const routes = {
   '/api/chat': () => import('../api/chat.js'),
   '/api/ops/auth': () => import('../api/ops/auth.js'),
@@ -36,9 +42,20 @@ const routes = {
   '/api/ops/evals': () => import('../api/ops/evals.js'),
   '/api/ops/prompts': () => import('../api/ops/prompts.js'),
   '/api/ops/rag-stats': () => import('../api/ops/rag-stats.js'),
+  '/api/voice-token': () => import('../api/voice-token.js'),
+  '/api/voice-trace': () => import('../api/voice-trace.js'),
+  '/api/rag-search': () => import('../api/rag-search.js'),
 }
 
 const server = createServer(async (nodeReq, nodeRes) => {
+  const startedAt = performance.now()
+  const reqId = randomUUID().slice(0, 8)
+  const reqLog = log.child({ reqId, method: nodeReq.method })
+  const done = (status) => reqLog.info(
+    { status, ms: +(performance.now() - startedAt).toFixed(1) },
+    'request complete',
+  )
+
   // Match on pathname only — several /api/ops/* endpoints take query params
   // (?days=3, etc.), which /api/chat never needed to handle.
   const pathname = nodeReq.url.split('?')[0]
@@ -46,9 +63,12 @@ const server = createServer(async (nodeReq, nodeRes) => {
     ? () => import('../api/ops/trace/[id].js')
     : routes[pathname]
   if (!routeLoader) {
+    reqLog.warn({ path: pathname }, 'no route for path')
     nodeRes.writeHead(404).end('Not found')
+    done(404)
     return
   }
+  reqLog.debug({ path: pathname }, 'request received')
 
   // Node request -> Fetch API Request
   const chunks = []
@@ -66,20 +86,25 @@ const server = createServer(async (nodeReq, nodeRes) => {
     const { default: handler } = await routeLoader()
     response = await handler(request)
   } catch (err) {
-    console.error('[cv-chat-service dev] handler error:', err)
+    reqLog.error({ path: pathname, err }, 'handler threw')
     nodeRes.writeHead(500).end(JSON.stringify({ error: 'Internal error' }))
+    done(500)
     return
   }
 
   // Fetch API Response -> Node response, streaming the body through
   nodeRes.writeHead(response.status, Object.fromEntries(response.headers))
   if (response.body) {
+    // Log on finish, not here — a streamed response isn't complete until the
+    // pipe drains, and duration is the number worth having for /api/chat.
+    nodeRes.on('finish', () => done(response.status))
     Readable.fromWeb(response.body).pipe(nodeRes)
   } else {
     nodeRes.end()
+    done(response.status)
   }
 })
 
 server.listen(PORT, () => {
-  console.log(`[cv-chat-service] dev adapter listening on :${PORT}`)
+  log.info({ port: Number(PORT), routes: Object.keys(routes).length }, 'dev adapter listening')
 })

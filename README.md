@@ -20,10 +20,10 @@ backed by real observability — not a static PDF pretending to be a website.
 The full roadmap, including what's already done and what's planned for
 each later phase, lives in **[`docs/plans/roadmap.md`](docs/plans/roadmap.md)**.
 
-The scaffolding for this project already exists in this
-repo from the original fork — real, working code, just built for Santiago's content and currently disconnected
-from the live app. Each phase adapts that scaffolding rather than rebuilding from zero; see the roadmap for
-detail on what's dormant where.
+The scaffolding for this project came from the original fork — real, working code, just built for Santiago's
+content. Each phase adapts that scaffolding rather than rebuilding from zero. As of Phase 5b every subsystem
+is live: static content, the text chatbot with RAG, the split chat service, the eval suite and
+prompt-injection defense, the `/ops` LLMOps dashboard, and voice mode.
 
 ---
 
@@ -84,7 +84,7 @@ cv-ui/                           # Vercel Project 1 — the site
 │   ├── main.tsx                   # Routes: / (App), /ops (live LLMOps dashboard), catch-all 404
 │   ├── FloatingChat.tsx            # Live chat widget — TJ persona, text-only
 │   ├── articles/registry.ts        # Case-study registry — emptied of Santiago's, type shape kept for mine
-│   ├── useVoiceMode.ts, VoiceOrb.tsx    # Dormant voice-mode UI — Phase 5b
+│   ├── useVoiceMode.ts, VoiceOrb.tsx    # Live voice mode (Gemini Live API) — Phase 5b
 │   └── ops/                              # Live LLMOps dashboard frontend — Phase 5a
 ├── api/chat.js                    # Thin proxy — forwards to cv-chat-service with the shared secret
 ├── api/ops/[...path].js            # Thin proxy — forwards /api/ops/* to cv-chat-service, no secret injection
@@ -95,7 +95,7 @@ cv-chat-service/                 # Vercel Project 2 — everything AI/chat
 │   ├── chat.js, _shared/rag.js, _shared/prompt.js    # Live chatbot + RAG pipeline
 │   ├── _shared/evaluator.js                            # Shared LLM-as-judge, used by cron + manual script
 │   ├── ops/, cron/                                       # Live LLMOps dashboard API — Phase 5a
-│   └── voice-*.js                                          # Dormant — Phase 5b
+│   └── voice-*.js, rag-search.js                    # Live voice API — Phase 5b
 ├── chatbot-prompt.txt              # TJ's system prompt
 ├── scripts/                         # RAG content pipeline (export-chunks, ingest-rag) + dev-server.mjs adapter
 └── evals/                            # 50 active tests across 8 categories, rewritten for Taher/TJ — Phase 4

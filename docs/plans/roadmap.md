@@ -48,7 +48,7 @@ These apply across all phases; don't relitigate them without a reason:
 | 3 | Service Split — Isolate the Chat/AI Backend | ✅ Done |
 | 4 | Evals + Prompt-Injection Defense | ✅ Done |
 | 5a | `/ops` LLMOps Dashboard | ✅ Done |
-| 5b | Voice Mode | 🔍 Investigate done — Plan not started |
+| 5b | Voice Mode | ✅ Done |
 
 ---
 
@@ -130,8 +130,9 @@ Full investigate/plan/test/implement writeup: **[`docs/plans/phase-2-chatbot-rag
 - Real case-study articles — RAG runs on `llms.txt` only for now; richer, section-anchored content comes as
   articles get written.
 - Chat avatar image — still a placeholder (`TJ` monogram), same unresolved headshot decision as the hero.
-- Prompt sync to Langfuse (`npm run prompt:sync`) — not run yet; the chat pipeline correctly falls back to
-  the local `chatbot-prompt.txt` file when nothing's synced, so this isn't blocking, just not done.
+- Prompt sync to Langfuse (`npm run prompt:sync`) — **it was run** (v1 @ label `production`), which means
+  Langfuse, not `chatbot-prompt.txt`, is what the live chatbot reads. Noted here because this file previously
+  recorded the opposite.
 
 **Depends on:** Phase 1 content being stable (RAG needs real source material to index).
 
@@ -293,55 +294,69 @@ Full investigate/plan/test/implement writeup: **[`docs/plans/phase-5a-ops-dashbo
 
 ---
 
-### Phase 5b — Voice Mode
+### Phase 5b — Voice Mode ✅ Done
 
-Investigate ✅ done (2026-09-02) — Plan not started. Findings:
+Full investigate/plan/test/implement writeup:
 **[`docs/plans/phase-5b-voice-mode.md`](phase-5b-voice-mode.md)**.
 
-**The blocking research question is answered: it's a provider swap, not an architecture change.** Google's
-Live API does support the same ephemeral-token / direct-browser-WebSocket pattern `useVoiceMode.ts` uses with
-OpenAI — backend mints a short-lived token, the browser holds the socket directly, no audio proxied through
-`cv-chat-service`. Two things actually improve: the token goes in an ordinary `?access_token=` query param
-instead of OpenAI's WebSocket-subprotocol hack, and `liveConnectConstraints` can lock the model, system
-instruction, and tools into the token server-side, removing the client-sends-`session.update` surface.
+**Goal:** voice interaction with the chatbot, swapping the dormant OpenAI Realtime implementation for
+Google's Live API and rewriting the persona for TJ in English.
 
-What the phase actually costs, now that it's been audited:
-- **A full rewrite of `handleRealtimeEvent`** — every protocol event name differs, and Google's turn model
-  isn't OpenAI's (server-signalled `interrupted`, a `toolCallCancellation` message with no current
-  equivalent). Not a shim.
-- **An asymmetric audio-rate fix** — Live API is 16 kHz in / 24 kHz out; the current code hardcodes 24 kHz on
-  both sides in five places. Constant changes, not new DSP, but the two rates must stop being the same literal.
-- **Two production-only gaps to fix up front**, both already identified rather than discovered post-deploy:
-  `cv-ui/` has no proxy route for `/api/voice-*` or `/api/rag-search` (same 404 class as `/api/ops/*` before
-  Phase 5a), and `cv-ui/vercel.json`'s CSP `connect-src` hardcodes `api.openai.com` — pointing the socket at
-  Google without updating it fails silently in prod and is invisible to local testing.
-- **A live bug in the dormant code**: `useVoiceMode.ts`'s `RagSource` still declares `page_path_en/_es` /
-  `article_slug_en/_es`, but `_shared/rag.js` has returned single-path fields since Phase 2 — voice source
-  badges read `undefined` today. "It works, it just speaks Spanish" is not accurate.
+**The blocking research question was answered in Investigate: it's a provider swap, not an architecture
+change.** Google's Live API supports the same ephemeral-token / direct-browser-WebSocket pattern — the
+backend mints a short-lived token, the browser holds the socket directly, no audio proxied through
+`cv-chat-service`. Two things improved: the token rides an ordinary `?access_token=` query param instead of
+OpenAI's WebSocket-subprotocol hack, and the **entire session config (model, system prompt, tools, voice,
+transcription) is locked into the token server-side**, so the prompt never reaches the browser and a hostile
+client can't override it.
 
-**Existing scaffolding (dormant):** `cv-ui/src/useVoiceMode.ts` (~800 lines, OpenAI-Realtime-specific).
-Its bilingual coupling turned out **smaller** than estimated here before Investigate ran — `lang` is 14
-pass-through references that no logic reads, so deleting it is removing a parameter from a call chain, not
-`i18n.ts`-scale surgery. The real bilingual weight is prompt *text*:
-`cv-chat-service/api/voice-token.js` (mints OpenAI ephemeral tokens; `VOICE_AFFECT_ES`/`EN` plus a ~60-line
-all-Spanish `VOICE_BASE_PROMPT`, 100% Santiago persona) and one Spanish `VOICE_OVERRIDE` line in
-`api/rag-search.js`. `cv-chat-service/api/voice-trace.js` (Langfuse cost tracking) is OpenAI-specific only in
-its per-minute pricing constants — Gemini Live bills per token, so that becomes a different calculation;
-everything else in it is provider-agnostic. `VoiceOrb.tsx` and `useAudioAnalyser.ts` are pure
-presentational/generic — verified free of provider, language, and content coupling, fully reusable.
-`api/rag-search.js` already reuses `_shared/rag.js` and is architecture-agnostic.
+**Scope:**
+- Rewrote `api/voice-token.js` to mint Gemini Live ephemeral tokens (`gemini-3.1-flash-live-preview`, voice
+  **Charon**) with the config locked server-side, and wrote a new English TJ voice prompt — replacing
+  `VOICE_AFFECT_ES`/`EN` and the ~60-line all-Spanish `VOICE_BASE_PROMPT` (Santiago persona).
+- Rewrote the client protocol in `useVoiceMode.ts`: new connection, `{setup:{}}` handshake, `clientContent`
+  history injection, `realtimeInput` audio frames, `toolCall`/`toolResponse`, and a full rewrite of the event
+  handler against Gemini's vocabulary. Fixed the asymmetric audio rates (16 kHz in / 24 kHz out — the old code
+  hardcoded 24 kHz on both sides in five places) behind `INPUT_RATE`/`OUTPUT_RATE` constants.
+- Wired voice into `FloatingChat.tsx` (previously zero references): a mic button in the header, the orb view,
+  live source badges, error surfaces, and folding the spoken transcript back into the text conversation on
+  exit so the two modes are one conversation.
+- Closed the production gaps **before** deploying rather than after: three `cv-ui` proxies sharing
+  `api/_shared/proxy.js` (`/api/voice-token`, `/api/voice-trace`, `/api/rag-search` had no route at all and
+  would have 404'd, exactly as `/api/ops/*` did in Phase 5a), and `vercel.json`'s CSP `connect-src` moved off
+  `api.openai.com` — a mistake there is invisible locally because Vite doesn't apply `vercel.json` headers.
+- Added the shared-secret gate to `rag-search.js` and `voice-trace.js`. `rag-search.js` had been
+  unauthenticated while billing Anthropic + Gemini + Supabase on every call.
+- Switched cost tracking to Gemini's per-token pricing using the **exact per-modality token counts** the API
+  reports via `usageMetadata`, with a duration-based fallback for when that message doesn't arrive before a
+  session ends (it isn't guaranteed to).
+- Provisioned `voice_rate_limits` in `supabase-setup.sql` with RLS — `checkRateLimit` fails *open*, so the
+  missing table meant unlimited voice sessions with no error anywhere. Enabled RLS on `documents` too and
+  revoked the function grants that let anyone with the public anon key wipe the RAG index.
+- Fixed a live bug found in Investigate: `useVoiceMode.ts`'s `RagSource` still declared the `_es`/`_en`
+  dual-path fields deleted in Phase 2, so every voice source badge resolved to `undefined`. Now a single
+  shared type in `src/types.ts`.
+- Updated `chatbot-prompt.txt`, which explicitly instructed the text bot to **deny** that voice mode exists,
+  and extended `PROMPT_FINGERPRINTS` to cover the voice prompt (without it, a leaked voice prompt would pass
+  the Phase 4 fingerprint layer untouched).
+- Rewrote `evals/datasets/voice.json` for TJ. Three of the original six tests asserted spoken-output
+  properties (brevity, no markdown, no URLs) against an endpoint that returns *retrieval context* and
+  deliberately falls back to raw chunks when RAG is slow — they were testing the wrong layer, and were
+  replaced with retrieval/grounding/attribution tests that hold on both tiers.
 
-**Scope (detail in `phase-5b-voice-mode.md`):**
-- Rewrite `handleRealtimeEvent` and the connection setup against the Gemini Live protocol; fix the 16/24 kHz
-  audio-rate split.
-- Rewrite the persona prompt for TJ, in English only — strip the bilingual architecture, not just translate it.
-- Add `cv-ui/` proxy routes for `/api/voice-*` + `/api/rag-search`, and update `vercel.json`'s CSP
-  `connect-src` off `api.openai.com`.
-- Wire voice mode into `FloatingChat.tsx` (currently zero references — fully unwired).
-- Update voice cost tracking (`voice-trace.js`) for Gemini Live's per-token pricing model.
-- Add the missing `voice_rate_limits` table to `scripts/supabase-setup.sql` (with RLS) — `checkRateLimit`
-  fails open today, so an absent table silently means no rate limiting at all.
-- Add `/api/voice-*` routes to `scripts/dev-server.mjs`, which also unblocks the 6 deferred `voice.json` evals.
+**Verified end-to-end for real**, not as a dry run: a full session from `voice-token` → live Gemini WebSocket
+→ real spoken question → `search_portfolio` → real `/api/rag-search` (real RAG + Claude) → grounded spoken
+answer → `voice-trace`, with direct handler invocation proving the three new proxies and that a
+misconfiguration fails closed.
+
+**Evals: 55/56 (98%)** — `voice_quality` 6/6, `factual_accuracy` 9/9. Two pre-existing flaky tests
+(`multi-no-repeat`, `retrieval-pentest-detail`) account for run-to-run variance; a clean run reached 56/56.
+Neither is related to voice.
+
+**Two deploy steps are required and deliberately not done here:** run `scripts/supabase-setup.sql` against the
+live Supabase project (`voice_rate_limits` doesn't exist yet, and `checkRateLimit` fails *open*), and run
+`npm run prompt:sync` (Langfuse serves the live prompt — syncing early would have the deployed text chatbot
+advertise voice before the voice code ships). Full checklist in the plan doc §6.
 
 **Depends on:** Phase 2 (voice needs a working text chatbot underneath it), Phase 3 (this is where the service
 that hosts voice actually lives).

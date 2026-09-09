@@ -9,6 +9,7 @@ import {
   containsFingerprint, LEAK_RESPONSE,
 } from './_shared/rag.js'
 import { getSystemPrompt } from './_shared/prompt.js'
+import { createLogger } from './_shared/logger.js'
 
 const client = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
@@ -33,6 +34,8 @@ function getLangfuse() {
 // ---------------------------------------------------------------------------
 // Handler
 // ---------------------------------------------------------------------------
+
+const log = createLogger({ route: '/api/chat' })
 
 export const config = {
   runtime: 'edge',
@@ -292,7 +295,7 @@ export default async function handler(req) {
       promptVersion,
     })
   } catch (error) {
-    console.error('Chat API error:', error)
+    log.error({ err: error }, 'chat request failed')
     trace?.update({ metadata: { error: error.message } })
     if (langfuse) waitUntil(langfuse.flushAsync())
     return new Response(JSON.stringify({ error: 'Error processing request' }), {

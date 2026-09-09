@@ -1,5 +1,8 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { useAudioAnalyser } from './useAudioAnalyser';
+import type { RagSource } from './types';
+
+export type { RagSource };
 
 export type VoiceStatus = 'idle' | 'connecting' | 'listening' | 'thinking' | 'speaking' | 'error';
 
@@ -22,17 +25,20 @@ interface Message {
   content: string;
 }
 
-export interface RagSource {
-  article_id: string;
-  section_id: string;
-  section_anchor: string;
-  page_path_en: string;
-  page_path_es: string;
-  article_slug_en: string;
-  article_slug_es: string;
-}
+
 
 export const SESSION_TIMEOUT_S = 120;
+
+// Gemini Live API audio is ASYMMETRIC: it accepts 16 kHz PCM and emits 24 kHz.
+// Kept as two named constants so they can never collapse back into one literal
+// — if they do, playback comes out at the wrong pitch. See plan §3.3 / §5.4.
+const INPUT_RATE = 16000;
+const OUTPUT_RATE = 24000;
+
+const LIVE_WS_URL = (token: string) =>
+  'wss://generativelanguage.googleapis.com/ws/' +
+  'google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContentConstrained' +
+  `?access_token=${encodeURIComponent(token)}`;
 
 export function useVoiceMode() {
   const [status, setStatus] = useState<VoiceStatus>('idle');
@@ -62,9 +68,12 @@ export function useVoiceMode() {
   const pendingListenTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const thinkingSoundStopRef = useRef<(() => void) | null>(null);
   const sessionStartRef = useRef(0);
-  const langRef = useRef('es');
   const sessionIdRef = useRef('');
   const transcriptRef = useRef<TranscriptEntry[]>([]);
+  // usageMetadata carries exact per-modality token counts, but is NOT guaranteed
+  // to arrive before a session ends (Test §5, unplanned findings) — accumulate
+  // whatever shows up and let voice-trace.js fall back when nothing did.
+  const usageRef = useRef<{ inputTokens: number; outputTokens: number; audioInputTokens: number; audioOutputTokens: number } | null>(null);
 
   // Audio analysis
   const inputAnalyser = useAudioAnalyser();
@@ -230,7 +239,7 @@ export function useVoiceMode() {
   }, [inputAnalyser, outputAnalyser]);
 
   // Send voice trace to backend
-  const sendTrace = useCallback(async (transcriptData: TranscriptEntry[], lang: string, sessionId: string) => {
+  const sendTrace = useCallback(async (transcriptData: TranscriptEntry[], sessionId: string) => {
     if (!traceIdRef.current) return;
     try {
       await fetch('/api/voice-trace', {
@@ -241,7 +250,7 @@ export function useVoiceMode() {
           sessionId,
           transcript: transcriptData,
           durationMs: Date.now() - sessionStartRef.current,
-          lang,
+          usage: usageRef.current,
         }),
       });
     } catch {
@@ -259,7 +268,7 @@ export function useVoiceMode() {
         sessionId: sessionIdRef.current,
         transcript: transcriptRef.current,
         durationMs: Date.now() - sessionStartRef.current,
-        lang: langRef.current,
+        usage: usageRef.current,
       })], { type: 'application/json' });
       navigator.sendBeacon('/api/voice-trace', blob);
       traceIdRef.current = null; // Prevent duplicate sends
@@ -281,9 +290,8 @@ export function useVoiceMode() {
     setRemainingSeconds(SESSION_TIMEOUT_S);
   }, [cleanup]);
 
-  const start = useCallback(async (history: Message[], lang: string, sessionId: string, currentPage?: string) => {
+  const start = useCallback(async (history: Message[], sessionId: string, currentPage?: string) => {
     currentPageRef.current = currentPage || '';
-    langRef.current = lang;
     sessionIdRef.current = sessionId;
     setVoiceSources([]);
     if (!isSupported) {
@@ -299,13 +307,14 @@ export function useVoiceMode() {
     setRemainingSeconds(SESSION_TIMEOUT_S);
     sessionStartRef.current = Date.now();
     currentTranscriptRef.current = '';
+    usageRef.current = null;
 
     try {
       // 1. Get ephemeral token
       const tokenRes = await fetch('/api/voice-token', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ lang, sessionId }),
+        body: JSON.stringify({ sessionId }),
       });
 
       if (!tokenRes.ok) {
@@ -336,11 +345,11 @@ export function useVoiceMode() {
       mediaStreamRef.current = stream;
 
       // 3. Set up audio capture
-      const audioContext = new AudioContext({ sampleRate: 24000 });
+      const audioContext = new AudioContext({ sampleRate: INPUT_RATE });
       audioContextRef.current = audioContext;
       // Resume explicitly — user gesture may have expired after the awaits above
       if (audioContext.state === 'suspended') await audioContext.resume();
-      addDebug(`AudioCtx: ${audioContext.sampleRate}Hz, state=${audioContext.state}`);
+      addDebug(`AudioCtx in: ${audioContext.sampleRate}Hz → ${INPUT_RATE}Hz, state=${audioContext.state}`);
 
       const source = audioContext.createMediaStreamSource(stream);
       const inputAnalyserNode = audioContext.createAnalyser();
@@ -348,7 +357,7 @@ export function useVoiceMode() {
       inputAnalyser.connect(inputAnalyserNode);
 
       // 4. Set up audio playback
-      const playbackContext = new AudioContext({ sampleRate: 24000 });
+      const playbackContext = new AudioContext({ sampleRate: OUTPUT_RATE });
       playbackContextRef.current = playbackContext;
       nextPlayTimeRef.current = 0;
       if (playbackContext.state === 'suspended') await playbackContext.resume();
@@ -358,87 +367,89 @@ export function useVoiceMode() {
       analyserNodeRef.current = outAnalyserNode;
       outputAnalyser.connect(outAnalyserNode);
 
-      // 5. Connect WebSocket to OpenAI Realtime API
-      // Note: OpenAI responds with 'realtime' as the selected subprotocol —
-      // it MUST be in the client's list or the browser rejects the handshake.
-      addDebug('Connecting WS to OpenAI...');
-      const ws = new WebSocket(
-        'wss://api.openai.com/v1/realtime?model=gpt-realtime-2025-08-28',
-        ['realtime', `openai-insecure-api-key.${token}`, 'openai-beta.realtime-v1'],
-      );
+      // 5. Connect WebSocket directly to the Gemini Live API.
+      // The ephemeral token goes in an ordinary ?access_token= query param —
+      // no subprotocol hack needed (OpenAI's Realtime API required one because
+      // browsers can't set headers on a WebSocket). The ENTIRE session config
+      // — model, system prompt, tools, transcription, voice — is locked into
+      // the token server-side by api/voice-token.js, so this client sends an
+      // empty setup and cannot override any of it.
+      addDebug('Connecting WS to Gemini Live...');
+      const ws = new WebSocket(LIVE_WS_URL(token));
       wsRef.current = ws;
 
       ws.onopen = () => {
-        addDebug('WS connected — sending session.update');
-        // Re-configure session via WebSocket — REST-configured turn_detection
-        // may not properly activate the input_audio_buffer pipeline.
-        ws.send(JSON.stringify({
-          type: 'session.update',
-          session: {
-            turn_detection: {
-              type: 'server_vad',
-              threshold: 0.5,
-              prefix_padding_ms: 300,
-              silence_duration_ms: 500,
-              create_response: true,
-              interrupt_response: true,
-            },
-            input_audio_format: 'pcm16',
-            input_audio_transcription: { model: 'whisper-1' },
-          },
-        }));
+        addDebug('WS connected — sending setup');
+        ws.send(JSON.stringify({ setup: {} }));
 
-        // Send conversation history for context
+        // Send prior text-chat history for continuity.
         if (history.length > 0) {
           const historyText = history
             .filter(m => m.content && m.content.trim())
-            .map(m => `${m.role === 'user' ? 'User' : 'Santiago'}: ${m.content}`)
+            .map(m => `${m.role === 'user' ? 'User' : 'TJ'}: ${m.content}`)
             .join('\n');
 
           if (historyText) {
             ws.send(JSON.stringify({
-              type: 'conversation.item.create',
-              item: {
-                type: 'message',
-                role: 'user',
-                content: [{
-                  type: 'input_text',
-                  text: `[Previous text conversation for context — do NOT repeat or reference this directly, just use it to maintain continuity]\n${historyText}`,
+              clientContent: {
+                turns: [{
+                  role: 'user',
+                  parts: [{
+                    text: `[Previous text conversation for context — do NOT repeat or reference this directly, just use it to maintain continuity]\n${historyText}`,
+                  }],
                 }],
+                turnComplete: false,
               },
             }));
           }
         }
       };
 
-      ws.onmessage = (event) => {
-        const data = JSON.parse(event.data);
+      // Gemini Live delivers frames as Blob, so decoding needs an await — which
+      // would let a later frame finish first and schedule its audio out of
+      // order. Chain handling onto a promise so frames are processed strictly
+      // in arrival order.
+      let frameQueue: Promise<void> = Promise.resolve();
 
-        // Start audio capture only after session is fully configured via WebSocket
-        if (data.type === 'session.updated') {
-          addDebug('session.updated — starting audio capture');
-          setStatus('listening');
+      ws.onmessage = (event) => {
+        frameQueue = frameQueue.then(async () => {
+          let raw = event.data;
+          if (raw instanceof Blob) raw = await raw.text();
+          else if (raw instanceof ArrayBuffer) raw = new TextDecoder().decode(raw);
+
+          let data: Record<string, unknown>;
           try {
-            startAudioCapture(audioContext, source, ws);
-            addDebug('Audio capture started OK');
-          } catch (e) {
-            addDebug(`Audio capture FAILED: ${e}`);
-            console.error('Audio capture setup failed:', e);
+            data = JSON.parse(raw as string);
+          } catch {
+            return;
           }
 
-          // Start session timer
-          timerRef.current = setInterval(() => {
-            setRemainingSeconds(prev => {
-              if (prev <= 1) {
-                stop();
-                return 0;
-              }
-              return prev - 1;
-            });
-          }, 1000);
-        }
+          // Start audio capture only once the server acknowledges setup.
+          if (data.setupComplete) {
+            addDebug('setupComplete — starting audio capture');
+            setStatus('listening');
+            try {
+              startAudioCapture(audioContext, source, ws);
+              addDebug('Audio capture started OK');
+            } catch (e) {
+              addDebug(`Audio capture FAILED: ${e}`);
+              console.error('Audio capture setup failed:', e);
+            }
 
-        handleRealtimeEvent(data, ws, lang, sessionId);
+            // Start session timer
+            timerRef.current = setInterval(() => {
+              setRemainingSeconds(prev => {
+                if (prev <= 1) {
+                  stop();
+                  return 0;
+                }
+                return prev - 1;
+              });
+            }, 1000);
+          }
+
+          handleLiveEvent(data, ws);
+        }).catch((e) => console.error('[Voice] frame handling failed:', e));
       };
 
       ws.onerror = (e) => {
@@ -455,7 +466,7 @@ export function useVoiceMode() {
         setStatus(currentStatus => {
           if (currentStatus !== 'idle' && currentStatus !== 'error') {
             setTranscript(prev => {
-              sendTrace(prev, lang, sessionId);
+              sendTrace(prev, sessionId);
               return prev;
             });
             cleanup();
@@ -473,10 +484,12 @@ export function useVoiceMode() {
     }
   }, [isSupported, cleanup, stop, inputAnalyser, outputAnalyser, sendTrace]);
 
-  // PCM audio capture via ScriptProcessorNode (widely supported)
+  // PCM audio capture via ScriptProcessorNode (widely supported).
+  // Target is INPUT_RATE (16 kHz) — Gemini Live's required input rate, which is
+  // NOT the 24 kHz it sends back.
   function startAudioCapture(audioContext: AudioContext, source: MediaStreamAudioSourceNode, ws: WebSocket) {
     const actualRate = audioContext.sampleRate;
-    const targetRate = 24000;
+    const targetRate = INPUT_RATE;
     const resampleRatio = actualRate / targetRate; // e.g. 2.0 for 48kHz→24kHz
     const needsResample = Math.abs(resampleRatio - 1) > 0.01;
 
@@ -533,8 +546,9 @@ export function useVoiceMode() {
       const base64 = btoa(binary);
 
       ws.send(JSON.stringify({
-        type: 'input_audio_buffer.append',
-        audio: base64,
+        realtimeInput: {
+          audio: { data: base64, mimeType: `audio/pcm;rate=${INPUT_RATE}` },
+        },
       }));
       chunkCount++;
       if (chunkCount === 1 || chunkCount % 30 === 0) {
@@ -547,64 +561,131 @@ export function useVoiceMode() {
     };
   }
 
-  // Handle events from OpenAI Realtime API
-  const handleRealtimeEvent = useCallback((data: Record<string, unknown>, ws: WebSocket, lang: string, sessionId: string) => {
-    // Log all events for debugging (remove in production)
-    if (data.type !== 'response.audio.delta' && data.type !== 'input_audio_buffer.speech_started') {
-      console.log('[Voice]', data.type, data.type === 'error' ? data.error : '');
+  // Handle events from the Gemini Live API.
+  //
+  // The protocol differs from OpenAI Realtime in one way that matters for the
+  // UI: there is NO server-side speech-START event. `activityStart`/`activityEnd`
+  // are client→server messages for MANUAL activity detection and never come
+  // back. Under automatic VAD the observable signals are, in arrival order:
+  //   inputTranscription  → the user finished an utterance (our 'thinking' cue)
+  //   inlineData audio    → the model is speaking
+  //   generationComplete  → the model stopped generating
+  //   turnComplete        → separate message, lags generationComplete by up to ~1.6s
+  //   interrupted         → barge-in, fires the moment VAD trips mid-reply
+  // Verified against a live session in the Phase 5b Test stage (plan §5.5).
+  const handleLiveEvent = useCallback((data: Record<string, unknown>, ws: WebSocket) => {
+    // --- usage accounting (exact, per-modality; may never arrive) ----------
+    if (data.usageMetadata) {
+      const u = data.usageMetadata as Record<string, unknown>;
+      const modality = (list: unknown, want: string) =>
+        (Array.isArray(list) ? list : []).reduce(
+          (acc: number, d: Record<string, unknown>) =>
+            acc + (d?.modality === want ? Number(d.tokenCount) || 0 : 0), 0);
+      usageRef.current = {
+        inputTokens: Number(u.promptTokenCount) || 0,
+        outputTokens: Number(u.responseTokenCount) || 0,
+        audioInputTokens: modality(u.promptTokensDetails, 'AUDIO'),
+        audioOutputTokens: modality(u.responseTokensDetails, 'AUDIO'),
+      };
     }
 
-    switch (data.type) {
-      case 'input_audio_buffer.speech_started':
-        setDebugLog(prev => [...prev.slice(-9), 'VAD: speech_started']);
-        // Cancel any pending listen transition
-        if (pendingListenTimerRef.current) {
-          clearTimeout(pendingListenTimerRef.current);
-          pendingListenTimerRef.current = null;
-        }
-        stopThinkingSound();
-        stopSubtitleLoop();
-        currentTranscriptRef.current = '';
-        // Stop audio playback when user interrupts (barge-in)
-        if (playbackContextRef.current) {
-          playbackContextRef.current.close().catch(() => {});
-          const newCtx = new AudioContext({ sampleRate: 24000 });
-          playbackContextRef.current = newCtx;
-          nextPlayTimeRef.current = 0;
-          const outNode = newCtx.createAnalyser();
-          outNode.connect(newCtx.destination);
-          analyserNodeRef.current = outNode;
-          outputAnalyser.connect(outNode);
-        }
-        setStatus('listening');
-        break;
+    // --- server-initiated disconnect ---------------------------------------
+    if (data.goAway) {
+      addDebug('goAway — server closing session');
+      return;
+    }
 
-      case 'input_audio_buffer.speech_stopped':
-        setDebugLog(prev => [...prev.slice(-9), 'VAD: speech_stopped']);
+    // sessionResumptionUpdate arrives mid-turn with a resumption handle. At a
+    // 120s cap there is nothing to resume, so it is deliberately ignored.
+
+    // --- tool calls ---------------------------------------------------------
+    if (data.toolCall) {
+      const calls = (data.toolCall as Record<string, unknown>).functionCalls;
+      for (const call of (Array.isArray(calls) ? calls : []) as Record<string, unknown>[]) {
+        if (call.name === 'search_portfolio') {
+          setStatus('thinking');
+          setIsSearching(true);
+          startThinkingSound();
+          const args = (call.args || {}) as Record<string, unknown>;
+          handleFunctionCall(String(call.id), String(args.query || ''), ws);
+        }
+      }
+      return;
+    }
+
+    if (data.toolCallCancellation) {
+      // The model gave up waiting on a tool result. Drop the pending UI state
+      // rather than leaving the orb stuck in 'thinking'.
+      addDebug('toolCallCancellation');
+      setIsSearching(false);
+      stopThinkingSound();
+      return;
+    }
+
+    const sc = data.serverContent as Record<string, unknown> | undefined;
+    if (!sc) return;
+
+    // --- barge-in: server-signalled, replaces the old VAD-inferred teardown --
+    if (sc.interrupted) {
+      setDebugLog(prev => [...prev.slice(-9), 'INTERRUPTED (barge-in)']);
+      stopThinkingSound();
+      stopSubtitleLoop();
+      currentTranscriptRef.current = '';
+      if (pendingListenTimerRef.current) {
+        clearTimeout(pendingListenTimerRef.current);
+        pendingListenTimerRef.current = null;
+      }
+      // Closing the context is the only reliable way to drop already-scheduled
+      // buffers; rebuild it immediately for the next turn.
+      if (playbackContextRef.current) {
+        playbackContextRef.current.close().catch(() => {});
+        const newCtx = new AudioContext({ sampleRate: OUTPUT_RATE });
+        playbackContextRef.current = newCtx;
+        nextPlayTimeRef.current = 0;
+        const outNode = newCtx.createAnalyser();
+        outNode.connect(newCtx.destination);
+        analyserNodeRef.current = outNode;
+        outputAnalyser.connect(outNode);
+      }
+      setStatus('listening');
+      return;
+    }
+
+    // --- user speech transcript --------------------------------------------
+    const inputTx = sc.inputTranscription as Record<string, unknown> | undefined;
+    if (inputTx?.text) {
+      const userText = String(inputTx.text).trim();
+      if (userText) {
+        setTranscript(prev => [...prev, { role: 'user', text: userText }]);
+        // The only "user finished talking" evidence this API gives us.
         setStatus('thinking');
         startThinkingSound();
-        break;
-
-      case 'conversation.item.input_audio_transcription.completed': {
-        const userText = data.transcript as string;
-        if (userText?.trim()) {
-          setTranscript(prev => [...prev, { role: 'user', text: userText.trim() }]);
-        }
-        break;
       }
+    }
 
-      case 'response.audio.delta': {
+    // --- assistant transcript (paces the subtitle loop) ---------------------
+    const outputTx = sc.outputTranscription as Record<string, unknown> | undefined;
+    if (outputTx?.text) {
+      currentTranscriptRef.current += String(outputTx.text);
+    }
+
+    // --- assistant audio ----------------------------------------------------
+    const parts = (sc.modelTurn as Record<string, unknown> | undefined)?.parts;
+    if (Array.isArray(parts)) {
+      for (const part of parts as Record<string, unknown>[]) {
+        const inline = part.inlineData as Record<string, unknown> | undefined;
+        if (!inline?.data) continue;
+
         stopThinkingSound();
         setStatus('speaking');
         setIsSearching(false);
-        // Decode and play audio
-        const audioData = data.delta as string;
-        if (audioData && playbackContextRef.current) {
-          // Track audio duration for subtitle sync (PCM16 = 2 bytes/sample, 24kHz)
-          const byteLen = Math.floor(audioData.length * 3 / 4); // base64 → bytes estimate
-          const chunkDuration = (byteLen / 2) / 24000;
+
+        const audioData = String(inline.data);
+        if (playbackContextRef.current) {
+          // PCM16 @ OUTPUT_RATE — 2 bytes/sample. Used to pace subtitles.
+          const byteLen = Math.floor(audioData.length * 3 / 4);
+          const chunkDuration = (byteLen / 2) / OUTPUT_RATE;
           if (totalAudioDurationRef.current === 0) {
-            // First audio chunk — record playback start time
             audioStartTimeRef.current = playbackContextRef.current.currentTime;
             startSubtitleLoop();
           }
@@ -616,71 +697,49 @@ export function useVoiceMode() {
             console.warn('[Voice] Audio chunk playback error:', e);
           }
         }
-        break;
       }
+    }
 
-      case 'response.audio_transcript.delta': {
-        // Accumulate transcript text — subtitle loop reads from ref to pace display
-        currentTranscriptRef.current += (data.delta as string) || '';
-        break;
+    // --- the model stopped generating (audio may still be playing out) ------
+    if (sc.generationComplete) {
+      stopThinkingSound();
+      const text = currentTranscriptRef.current.trim();
+      if (text) {
+        setTranscript(prev => [...prev, { role: 'assistant', text }]);
       }
+      currentTranscriptRef.current = '';
+      stopSubtitleLoop();
+    }
 
-      case 'response.audio_transcript.done': {
-        const text = (data.transcript as string) || currentTranscriptRef.current;
-        if (text?.trim()) {
-          setTranscript(prev => [...prev, { role: 'assistant', text: text.trim() }]);
-        }
-        currentTranscriptRef.current = '';
-        stopSubtitleLoop();
-        break;
-      }
-
-      case 'response.done': {
-        // Wait for playback to finish before showing "listening"
-        const pbCtx = playbackContextRef.current;
-        if (pbCtx && nextPlayTimeRef.current > pbCtx.currentTime) {
-          const delayMs = (nextPlayTimeRef.current - pbCtx.currentTime) * 1000;
-          pendingListenTimerRef.current = setTimeout(() => {
-            setStatus('listening');
-            pendingListenTimerRef.current = null;
-          }, delayMs + 150); // +150ms buffer for audio tail
-        } else {
+    // --- turn over: return to listening once playback actually drains -------
+    if (sc.turnComplete) {
+      const pbCtx = playbackContextRef.current;
+      if (pbCtx && nextPlayTimeRef.current > pbCtx.currentTime) {
+        const delayMs = (nextPlayTimeRef.current - pbCtx.currentTime) * 1000;
+        pendingListenTimerRef.current = setTimeout(() => {
           setStatus('listening');
-        }
-        break;
-      }
-
-      case 'response.function_call_arguments.done': {
-        // Function calling: search_portfolio
-        const callId = data.call_id as string;
-        const name = data.name as string;
-        if (name === 'search_portfolio') {
-          setStatus('thinking');
-          setIsSearching(true);
-          startThinkingSound();
-          const args = JSON.parse((data.arguments as string) || '{}');
-          handleFunctionCall(callId, args.query, ws, lang, sessionId);
-        }
-        break;
-      }
-
-      case 'error': {
-        const err = data.error as Record<string, unknown> | undefined;
-        console.error('Realtime API error:', err);
-        setDebugLog(prev => [...prev.slice(-9), `ERR: ${err?.code || err?.message || 'unknown'}`]);
-        // Surface critical errors to user
-        if (err?.code === 'session_expired' || err?.code === 'rate_limit_exceeded') {
-          setError('connection');
-          setStatus('error');
-          cleanup();
-        }
-        break;
+          pendingListenTimerRef.current = null;
+        }, delayMs + 150); // +150ms buffer for the audio tail
+      } else {
+        setStatus('listening');
       }
     }
   }, []);
 
-  // Handle function calling (RAG search)
-  async function handleFunctionCall(callId: string, query: string, ws: WebSocket, _lang: string, _sessionId: string) {
+  // Handle function calling (RAG search).
+  // The tool result goes back as a `toolResponse` keyed by the call `id` — the
+  // Live API resumes generation on its own, so unlike OpenAI Realtime there is
+  // no follow-up "now continue" message to send.
+  async function handleFunctionCall(callId: string, query: string, ws: WebSocket) {
+    const reply = (output: string) => {
+      if (ws.readyState !== WebSocket.OPEN) return;
+      ws.send(JSON.stringify({
+        toolResponse: {
+          functionResponses: [{ id: callId, name: 'search_portfolio', response: { output } }],
+        },
+      }));
+    };
+
     try {
       const res = await fetch('/api/rag-search', {
         method: 'POST',
@@ -695,29 +754,9 @@ export function useVoiceMode() {
         setVoiceSources(sources);
       }
 
-      // Send function output back
-      ws.send(JSON.stringify({
-        type: 'conversation.item.create',
-        item: {
-          type: 'function_call_output',
-          call_id: callId,
-          output: context || 'No relevant content found.',
-        },
-      }));
-
-      // Ask the model to continue responding
-      ws.send(JSON.stringify({ type: 'response.create' }));
+      reply(context || 'No relevant content found.');
     } catch {
-      // Send error output
-      ws.send(JSON.stringify({
-        type: 'conversation.item.create',
-        item: {
-          type: 'function_call_output',
-          call_id: callId,
-          output: 'Search temporarily unavailable — answer from your general knowledge.',
-        },
-      }));
-      ws.send(JSON.stringify({ type: 'response.create' }));
+      reply('Search temporarily unavailable — answer from your general knowledge.');
     }
   }
 
@@ -735,7 +774,7 @@ export function useVoiceMode() {
       float32[i] = int16[i] / 32768;
     }
 
-    const buffer = context.createBuffer(1, float32.length, 24000);
+    const buffer = context.createBuffer(1, float32.length, OUTPUT_RATE);
     buffer.copyToChannel(float32, 0);
 
     const source = context.createBufferSource();

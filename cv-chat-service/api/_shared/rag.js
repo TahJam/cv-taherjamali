@@ -446,8 +446,13 @@ export async function sendJailbreakAlert(userMessage) {
 // ---------------------------------------------------------------------------
 
 export const PROMPT_FINGERPRINTS = [
+  // Phrases unique to chatbot-prompt.txt (text) ...
   'MANDATORY BREVITY', 'maximum 150 words per response', 'CRITICAL Instructions',
   'Anti-extraction (CRITICAL)', 'internal_ref token check', 'cache_control',
+  // ... and to the voice prompt in api/voice-token.js (Phase 5b). Without
+  // these, a leaked voice prompt would pass the fingerprint layer untouched.
+  'Voice affect (speech style)', 'Badge mention examples',
+  'Voice rules (CRITICAL)', 'Meta-command refusal',
 ]
 
 export const LEAK_RESPONSE = 'That information is part of my internal design. The project source code is public on GitHub if you\'re interested in the architecture.'

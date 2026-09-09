@@ -10,10 +10,15 @@ import {
   Mail,
   ChevronDown,
   FileText,
+  Mic,
+  PhoneOff,
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { getSectionLabels, getPageTitles } from './articles/registry';
+import type { RagSource } from './types';
+import { useVoiceMode } from './useVoiceMode';
+import VoiceOrb from './VoiceOrb';
 
 // English-only chat UI strings. This used to come from src/i18n.ts (bilingual,
 // removed in Phase 1) — inlined here since it's ~15 strings for a
@@ -28,6 +33,22 @@ const CHAT_STRINGS = {
   contactCtaTitle: 'Want to talk directly?',
   email: 'taher2152@gmail.com',
   typingIndicator: 'Typing...',
+  voiceStart: 'Talk to TJ',
+  voiceEnd: 'End voice',
+  voiceStatus: {
+    connecting: 'Connecting…',
+    listening: 'Listening',
+    thinking: 'Thinking…',
+    speaking: 'Speaking',
+    idle: 'Tap to start',
+    error: 'Something went wrong',
+  },
+  voiceErrors: {
+    micDenied: 'Microphone access was denied. Enable it in your browser settings to use voice.',
+    rateLimited: "You've hit the limit of 3 voice sessions per day. The text chat is still open.",
+    unsupported: "This browser doesn't support voice mode. Try the text chat instead.",
+    connection: 'Voice connection failed. Please try again.',
+  },
   prompts: [
     { icon: 'briefcase', label: 'AI Experience', query: "What is Taher's experience with AI and automation?" },
     { icon: 'rocket', label: 'Top Projects', query: "What are Taher's most notable projects?" },
@@ -36,13 +57,7 @@ const CHAT_STRINGS = {
   ],
 }
 
-interface RagSource {
-  article_id: string;
-  section_id: string;
-  section_anchor: string;
-  page_path: string;
-  article_slug: string;
-}
+
 
 interface Message {
   role: 'user' | 'assistant';
@@ -179,6 +194,43 @@ export default function FloatingChat() {
   const isAtBottomRef = useRef(true);
 
   const isMobile = useIsMobile();
+
+  // --- Voice mode (Phase 5b) ---
+  const voice = useVoiceMode();
+  const [voiceActive, setVoiceActive] = useState(false);
+  const voiceStatus = voice.state.status;
+
+  // Fold the spoken exchange back into the text conversation when voice ends,
+  // so the two modes are one continuous conversation rather than two.
+  const endVoice = () => {
+    const spoken = voice.state.transcript;
+    voice.stop();
+    setVoiceActive(false);
+    if (spoken.length > 0) {
+      setMessages((prev) => [
+        ...prev,
+        ...spoken.map((e) => ({ role: e.role, content: e.text }) as Message),
+      ]);
+      setShowPrompts(false);
+    }
+  };
+
+  const startVoice = () => {
+    setVoiceActive(true);
+    voice.start(
+      messages.filter((m) => m.content && m.content !== t.greeting),
+      sessionId,
+      location.pathname,
+    );
+  };
+
+  // A failed session shouldn't strand the user in the orb view.
+  useEffect(() => {
+    if (voiceActive && voiceStatus === 'error') {
+      const id = setTimeout(() => setVoiceActive(false), 3500);
+      return () => clearTimeout(id);
+    }
+  }, [voiceActive, voiceStatus]);
 
   // Emit chatToggle event for ambient music ducking
   useEffect(() => {
@@ -602,6 +654,16 @@ export default function FloatingChat() {
                 </div>
               </div>
               <div className="flex items-center gap-2">
+                {voice.isSupported && !voiceActive && (
+                  <button
+                    onClick={startVoice}
+                    className="w-10 h-10 rounded-full bg-muted/50 flex items-center justify-center text-muted-foreground hover:text-primary hover:bg-muted transition-colors"
+                    aria-label={t.voiceStart}
+                    title={t.voiceStart}
+                  >
+                    <Mic className="w-5 h-5" aria-hidden="true" />
+                  </button>
+                )}
                 {isMobile && (
                   <button
                     onClick={() => {
@@ -617,6 +679,66 @@ export default function FloatingChat() {
               </div>
             </div>
 
+            {voiceActive ? (
+              /* ---------- Voice mode ---------- */
+              <div className="flex-1 flex flex-col items-center justify-center gap-5 p-6 overflow-y-auto">
+                <VoiceOrb
+                  status={voiceStatus}
+                  getInputLevel={voice.getInputLevel}
+                  getOutputLevel={voice.getOutputLevel}
+                  remainingSeconds={voice.state.remainingSeconds}
+                  transcript={voice.liveTranscript}
+                  statusText={
+                    voice.isSearching
+                      ? 'Searching my portfolio…'
+                      : t.voiceStatus[voiceStatus]
+                  }
+                  isMobile={isMobile}
+                />
+
+                {voice.state.error && (
+                  <p className="text-sm text-center text-muted-foreground max-w-xs" role="alert">
+                    {t.voiceErrors[voice.state.error as keyof typeof t.voiceErrors] ?? t.voiceErrors.connection}
+                  </p>
+                )}
+
+                {/* RAG source badges surfaced by search_portfolio during the call */}
+                {voice.voiceSources.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5 justify-center">
+                    {voice.voiceSources.map((source, si) => {
+                      const targetPath = source.page_path;
+                      const articleName =
+                        getPageTitles()[targetPath] ||
+                        source.article_id.replace(/-/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+                      return (
+                        <button
+                          key={`${source.article_id}-${source.section_id}-${si}`}
+                          onClick={() => {
+                            if (!targetPath) return;
+                            if (isMobile) setIsOpen(false);
+                            navigate(targetPath + (source.section_anchor || ''));
+                          }}
+                          className="flex items-center gap-1.5 rounded-full font-medium bg-primary/10 text-primary border border-primary/20 hover:bg-primary/20 transition-colors px-3 py-1.5 text-xs"
+                        >
+                          <FileText className="w-3 h-3 shrink-0" aria-hidden="true" />
+                          {articleName}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+
+                <button
+                  onClick={endVoice}
+                  className="flex items-center gap-2 rounded-xl bg-muted hover:bg-muted/70 border border-border text-foreground transition-colors px-4 py-2.5 text-sm font-medium"
+                  aria-label={t.voiceEnd}
+                >
+                  <PhoneOff className="w-4 h-4" aria-hidden="true" />
+                  {t.voiceEnd}
+                </button>
+              </div>
+            ) : (
+              <>
             {/* Messages */}
             <div
               aria-live="polite"
@@ -863,6 +985,8 @@ export default function FloatingChat() {
                 </motion.button>
               </div>
             </div>
+              </>
+            )}
           </motion.div>
         )}
       </AnimatePresence>

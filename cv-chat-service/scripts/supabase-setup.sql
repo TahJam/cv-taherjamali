@@ -53,3 +53,40 @@ create index if not exists documents_embedding_idx on documents
   using ivfflat (embedding vector_cosine_ops) with (lists = 10);
 create index if not exists documents_fts_idx on documents using gin (fts);
 create index if not exists documents_metadata_idx on documents using gin (metadata);
+
+-- ---------------------------------------------------------------------------
+-- 6. Voice-mode rate limiting (Phase 5b)
+-- ---------------------------------------------------------------------------
+-- api/voice-token.js's checkRateLimit() reads and upserts this table before
+-- minting an ephemeral Live API token. It deliberately FAILS OPEN if the table
+-- is missing, so an unprovisioned table means unlimited voice sessions with no
+-- error anywhere — which is exactly what happened before Phase 5b added this.
+-- The upsert relies on `Prefer: resolution=merge-duplicates`, so `ip` must be
+-- unique for the merge to target an existing row.
+
+create table if not exists public.voice_rate_limits (
+  ip           text primary key,
+  count        int not null default 0,
+  window_start timestamptz not null default now()
+);
+
+create index if not exists voice_rate_limits_window_idx
+  on public.voice_rate_limits (window_start);
+
+-- ---------------------------------------------------------------------------
+-- 7. Lock down: service_role bypasses RLS, so no policies are needed.
+--    Zero policies = anon/authenticated match no rows.
+-- ---------------------------------------------------------------------------
+-- Every caller in cv-chat-service uses SUPABASE_SERVICE_ROLE_KEY server-side;
+-- nothing in cv-ui ever touches Supabase. Without RLS, anyone holding the
+-- (publicly-shippable by design) anon key could read/write these tables over
+-- the project's REST API — including calling delete_documents_by_slug to wipe
+-- the RAG index, or forging voice rate-limit rows.
+
+alter table public.documents          enable row level security;
+alter table public.voice_rate_limits  enable row level security;
+
+revoke execute on function hybrid_search(text, vector, int, float, float, jsonb)
+  from public, anon, authenticated;
+revoke execute on function delete_documents_by_slug(text)
+  from public, anon, authenticated;
