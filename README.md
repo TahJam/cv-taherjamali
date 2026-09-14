@@ -17,11 +17,10 @@ A personal portfolio site built incrementally, phase by phase, rather than all a
 Santiago's original pattern: real project content, an AI chatbot that can talk about that content in depth,
 backed by real observability — not a static PDF pretending to be a website.
 
-The full roadmap, including what's already done and what's planned for
-each later phase, lives in **[`docs/plans/roadmap.md`](docs/plans/roadmap.md)**.
+The full roadmap lives in **[`docs/plans/roadmap.md`](docs/plans/roadmap.md)**.
 
 The scaffolding for this project came from the original fork — real, working code, just built for Santiago's
-content. Each phase adapts that scaffolding rather than rebuilding from zero. As of Phase 5b every subsystem
+content. Each phase adapted that scaffolding rather than rebuilding from zero. As of Phase 5b every subsystem
 is live: static content, the text chatbot with RAG, the split chat service, the eval suite and
 prompt-injection defense, the `/ops` LLMOps dashboard, and voice mode.
 
@@ -58,12 +57,15 @@ npm run dev
 `CLAUDE.md` for how it works). The UI's dev server proxies `/api/*` straight to the adapter, so the chat
 widget works out of the box once both are running.
 
-`cv-ui` needs no environment variables. `cv-chat-service` needs `ANTHROPIC_API_KEY`, `GOOGLE_API_KEY`,
+### Environment Variables
+`cv-chat-service` needs `ANTHROPIC_API_KEY`, `GOOGLE_API_KEY`,
 `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, and `CHAT_SERVICE_SECRET` — see
-`cv-chat-service/.env.local.example`. `cv-ui` needs `CHAT_SERVICE_URL` and the same `CHAT_SERVICE_SECRET` —
-see `cv-ui/.env.local.example`. `LANGFUSE_*`/`RESEND_API_KEY` are optional (tracing and jailbreak alerts; the
+`cv-chat-service/.env.local.example`. `LANGFUSE_*`/`RESEND_API_KEY` are optional (tracing and jailbreak alerts; the
 chat pipeline degrades gracefully without them). To use the `/ops` dashboard locally, also set
 `OPS_DASHBOARD_SECRET` (its login password), `CRON_SECRET`, and `ALERT_EMAIL` in `cv-chat-service/.env.local`.
+
+`cv-ui` needs `CHAT_SERVICE_URL` and the same `CHAT_SERVICE_SECRET` —
+see `cv-ui/.env.local.example`.
 
 ---
 
@@ -120,7 +122,7 @@ over unchanged.
 
 This project is forked from [santifer.io](https://santifer.io)
 ([source](https://github.com/santifer/cv-santiago)), built by **Santiago Fernández**
-([@santifer](https://github.com/santifer)). The architecture, the self-referential AI-chatbot-that-talks-about-
+([@santifer](https://github.com/santifer)). The self-referential AI-chatbot-that-talks-about-
 its-owner's-work concept, and a lot of the engineering underneath this site are his. This fork keeps the
 pattern and the git history, and replaces the content, persona, and branding with my own as each phase lands.
 
